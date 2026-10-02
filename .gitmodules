@@ -1,0 +1,3 @@
+[submodule "experiment/vendor/midnight"]
+	path = experiment/vendor/midnight
+	url = https://github.com/morpho-org/midnight.git
