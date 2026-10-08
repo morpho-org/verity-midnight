@@ -8,6 +8,7 @@ cd "$(dirname "$0")"
 PLATFORM="${PLATFORM:-linux/amd64}"
 IMAGE="${IMAGE:-midnight-agent}"
 AGENT_TIMEOUT="${AGENT_TIMEOUT:-1h}"
+AGENT_MODEL="${AGENT_MODEL:-gpt-5.6-sol-high}"
 RUN_ID="$(date +%Y%m%d-%H%M%S)"
 TEMPLATE="$PWD/experiment"
 RUN_DIR="$PWD/runs/$RUN_ID"
@@ -53,18 +54,36 @@ docker run --rm \
       mkdir -p .lake/solidity-import
       cp -a /cache/solidity-import/solc-0.8.34 .lake/solidity-import/solc-0.8.34
     fi
-    lake update
-    python3 .lake/packages/verity/scripts/setup_solc_import.py \
-      --output .lake/solidity-import/solc-0.8.34
+    lake exe cache get Mathlib.Tactic
+    if [[ ! -x .lake/solidity-import/solc-0.8.34 ]]; then
+      python3 .lake/packages/verity/scripts/setup_solc_import.py \
+        --output .lake/solidity-import/solc-0.8.34
+    fi
     lean-lsp-mcp --version
     rm -rf /cache/packages
     cp -a .lake/packages /cache/packages
     mkdir -p /cache/solidity-import
     cp -a .lake/solidity-import/solc-0.8.34 /cache/solidity-import/solc-0.8.34
-    lake build Midnight.Import
+    lake build Midnight.Import Midnight.Spec Compiler.SolidityImport.Proofs
   '
 
-echo "Starting agent on $RUN_DIR (timeout $AGENT_TIMEOUT)"
+echo "Checking lean-lsp MCP on $RUN_DIR"
+set +e
+docker run --rm \
+  --platform "$PLATFORM" \
+  -e CURSOR_API_KEY \
+  -v "$RUN_DIR:/work" \
+  -w /work \
+  "$IMAGE" \
+  bash -lc 'sh scripts/require-lean-mcp.sh'
+MCP_STATUS=$?
+set -e
+if [[ "$MCP_STATUS" -ne 0 ]]; then
+  echo "lean-lsp MCP preflight failed (exit $MCP_STATUS) — run kept at $RUN_DIR"
+  exit 2
+fi
+
+echo "Starting agent on $RUN_DIR (model $AGENT_MODEL, timeout $AGENT_TIMEOUT)"
 set +e
 docker run --rm \
   --platform "$PLATFORM" \
@@ -74,11 +93,16 @@ docker run --rm \
   "$IMAGE" \
   timeout --signal=TERM --kill-after=30s "$AGENT_TIMEOUT" \
   agent -p --force --trust --approve-mcps --sandbox disabled \
-  --model gpt-5.6-sol-high \
+  --model "$AGENT_MODEL" \
   --workspace /work \
-  "Prove updatePositionViewProperties. Follow README.md and AGENTS.md. Use lean-lsp MCP (lean_diagnostic_messages, lean_goal, lean_hover_info, lean_local_search) when helpful. Stop when ./check/check_proof.sh exits 0."
+  "Prove updatePositionViewProperties. Follow README.md and AGENTS.md. lean-lsp MCP is required — if it is unavailable, write out/mcp-unavailable with a reason and stop immediately (do not continue shell-only). Use lean_diagnostic_messages, lean_goal, lean_hover_info, lean_local_search. Stop when ./check/check_proof.sh exits 0."
 AGENT_STATUS=$?
 set -e
+if [[ -f "$RUN_DIR/out/mcp-unavailable" ]]; then
+  echo "Agent reported lean-lsp MCP unavailable — run kept at $RUN_DIR"
+  cat "$RUN_DIR/out/mcp-unavailable" >&2 || true
+  exit 91
+fi
 if [[ "$AGENT_STATUS" -eq 124 ]]; then
   echo "Agent timed out after $AGENT_TIMEOUT — run kept at $RUN_DIR"
   exit 124

@@ -45,6 +45,7 @@ What the script does:
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `CURSOR_API_KEY` | (required) | Auth for the agent CLI |
+| `AGENT_MODEL` | `gpt-5.6-sol-high` | Cursor agent `--model` id (`agent --list-models`) |
 | `AGENT_TIMEOUT` | `1h` | Cap on the agent step only (`timeout(1)` inside the container) |
 | `PLATFORM` | `linux/amd64` | Docker platform |
 | `IMAGE` | `midnight-agent` | Image name |
@@ -53,12 +54,22 @@ Examples:
 
 ```sh
 AGENT_TIMEOUT=30m ./run-experiment.sh
+AGENT_MODEL=grok-4.7-high AGENT_TIMEOUT=90m ./run-experiment.sh
 PLATFORM=linux/amd64 AGENT_TIMEOUT=2h ./run-experiment.sh
 ```
 
-Exit status **124** means the agent hit the timeout. Non-zero agent failures keep
-the run directory for inspection; proofs are only written under `results/` when
-the checker passes.
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Proof accepted; copied to `results/<id>/` |
+| `1` | Agent finished but `./check/check_proof.sh` failed |
+| `2` | lean-lsp MCP preflight failed (agent not started) |
+| `91` | Agent wrote `out/mcp-unavailable` (MCP required; see `AGENTS.md`) |
+| `124` | Agent hit `AGENT_TIMEOUT` |
+
+Non-zero failures keep the run directory for inspection. Proofs are only written
+under `results/` when the checker passes.
 
 ## Layout
 
@@ -77,26 +88,11 @@ Task rules for the agent (what may be edited, acceptance criteria) are in
 
 ## Interactive shell
 
-To debug the image with the same mounts the prep step uses:
-
 ```sh
-docker run --rm -it --platform linux/amd64 \
-  -v "$PWD/runs/<id>:/work" \
-  -v "$PWD/cache:/cache" \
-  -w /work \
-  midnight-agent \
-  bash
+./shell.sh                 # mount experiment/ (keep the template clean)
+./shell.sh <run-id>        # mount runs/<run-id>/ + cache/
+./shell.sh runs/<run-id>   # same, explicit path
 ```
 
-Or against a fresh copy of the template if you have not started a run yet:
-
-```sh
-docker run --rm -it --platform linux/amd64 \
-  -v "$PWD/experiment:/work" \
-  -w /work \
-  midnight-agent \
-  bash
-```
-
-Do not leave build artifacts in `experiment/`; keep that tree as the clean
-template. Use `runs/` or throwaway mounts for Lean builds.
+Uses `PLATFORM` / `IMAGE` like `run-experiment.sh`. Prefer a `runs/<id>` mount
+for Lean builds so `experiment/` stays the clean template.

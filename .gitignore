@@ -3,3 +3,4 @@ experiment/out/
 runs/
 results/
 cache/
+.env
