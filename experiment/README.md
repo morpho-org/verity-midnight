@@ -30,7 +30,11 @@ The checker hashes those files and rejects the run if they change.
 
 ## Hint
 
-A successful call does not underflow the final checked subtractions, so `newCredit + fee` is the post-slash credit and `newPendingFee + fee` is at most the old pending fee. `lastLossFactor ≤ lossFactor` means slashing multiplies credit by at most one. The exact formula for `fee` is not needed.
+A successful call does not underflow the final checked subtractions, so `newCredit + fee` is the post-slash credit and `newPendingFee + fee` is at most the old pending fee. `lastLossFactor ≤ lossFactor` means slashing multiplies credit by at most one.
+
+Import `Compiler.SolidityImport.Proofs` for word/bind lemmas and for cutting the imported body at Solidity local names.
+
+Use lean-lsp MCP (`scripts/lean-mcp.sh`) for diagnostics, goals, hover, and local search.
 
 ## Loop
 

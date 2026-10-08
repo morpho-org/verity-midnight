@@ -56,6 +56,7 @@ docker run --rm \
     lake update
     python3 .lake/packages/verity/scripts/setup_solc_import.py \
       --output .lake/solidity-import/solc-0.8.34
+    lean-lsp-mcp --version
     rm -rf /cache/packages
     cp -a .lake/packages /cache/packages
     mkdir -p /cache/solidity-import
@@ -72,10 +73,10 @@ docker run --rm \
   -w /work \
   "$IMAGE" \
   timeout --signal=TERM --kill-after=30s "$AGENT_TIMEOUT" \
-  agent -p --force --trust --sandbox disabled \
+  agent -p --force --trust --approve-mcps --sandbox disabled \
   --model gpt-5.6-sol-high \
   --workspace /work \
-  "Prove updatePositionViewProperties. Follow README.md. Stop when ./check/check_proof.sh exits 0."
+  "Prove updatePositionViewProperties. Follow README.md and AGENTS.md. Use lean-lsp MCP (lean_diagnostic_messages, lean_goal, lean_hover_info, lean_local_search) when helpful. Stop when ./check/check_proof.sh exits 0."
 AGENT_STATUS=$?
 set -e
 if [[ "$AGENT_STATUS" -eq 124 ]]; then

@@ -29,10 +29,16 @@ What the script does:
 
 1. Copy clean `experiment/` → `runs/<timestamp>/`
 2. Build the `midnight-agent` image (Lean 4.31, elan, Cursor `agent`, Python)
-3. Inside Docker: `lake update`, install pinned linux `solc`, `lake build Midnight.Import`
-4. Run the Cursor agent on that run directory (default timeout **1h**)
+3. Inside Docker: `lake update`, install pinned linux `solc`,
+   `lake build Midnight.Import` (`lean-lsp-mcp` is already in the image)
+4. Run the Cursor agent on that run directory (default timeout **1h**), with
+   `--approve-mcps` so `.cursor/mcp.json` → `scripts/lean-mcp.sh` is available
 5. Run `./check/check_proof.sh` in Docker
 6. On success, copy `Midnight/` (and `out/` if present) to `results/<timestamp>/`
+
+`lean-lsp-mcp` is installed at `/opt/lean-mcp` in the Dockerfile (pins from
+`experiment/scripts/lean-mcp-requirements.txt`). Helpers match
+[morpho-midnight-verity `cursor/proof-sandbox`](https://github.com/lfglabs-dev/morpho-midnight-verity/tree/cursor/proof-sandbox).
 
 ## Useful knobs
 
@@ -66,7 +72,8 @@ the checker passes.
 | `run-experiment.sh` | Orchestrates a trial |
 
 Task rules for the agent (what may be edited, acceptance criteria) are in
-[`experiment/README.md`](experiment/README.md).
+[`experiment/README.md`](experiment/README.md). MCP usage notes are in
+[`experiment/AGENTS.md`](experiment/AGENTS.md).
 
 ## Interactive shell
 
