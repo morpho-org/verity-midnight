@@ -30,7 +30,12 @@ The checker hashes those files and rejects the run if they change.
 
 ## Hint
 
-A successful call does not underflow the final checked subtractions, so `newCredit + fee` is the post-slash credit and `newPendingFee + fee` is at most the old pending fee. `lastLossFactor ≤ lossFactor` means slashing multiplies credit by at most one. The exact formula for `fee` is not needed.
+- A successful call does not underflow the final checked subtractions, so `newCredit + fee` is the post-slash credit and `newPendingFee + fee` is at most the old pending fee. `lastLossFactor ≤ lossFactor` means slashing multiplies credit by at most one. The exact formula for `fee` is not needed.
+- Use `import Compiler.SolidityImport.Proofs` (and `Compiler.SolidityImport.Access`):
+  - `functionBody midnight.model "updatePositionView"` gets the statement list.
+  - `splitAfter "postSlashCredit"`, `splitAfter "postSlashPendingFee"`, and `splitAfter "fee"` slice the body by Solidity local variable names.
+  - `split_prefix`, `split_prefix_continue`, `ends_return`, and `list_frame` (dischargeable `by decide`) step across those slices and frame unmodified bindings across `fee` without executing `fee`.
+  - `evalExpr_structMember2_param`, `evalExpr_structMember_param`, `sub_word`, `mul_word128`, `div_word`, `mask_eq`, and `word_of_small` discharge the storage reads and 256-bit word arithmetic.
 
 ## Loop
 
@@ -39,4 +44,4 @@ lake build Midnight.Proof
 ./check/check_proof.sh
 ```
 
-Work only in this directory. Do not read parent directories or other checkouts.  Do not check the correct answer from github.
+Work only in this directory. Do not read parent directories or other checkouts. Do not check the correct answer from github or git history.
