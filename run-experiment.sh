@@ -7,6 +7,7 @@ cd "$(dirname "$0")"
 
 PLATFORM="${PLATFORM:-linux/amd64}"
 IMAGE="${IMAGE:-midnight-agent}"
+AGENT_TIMEOUT="${AGENT_TIMEOUT:-1h}"
 RUN_ID="$(date +%Y%m%d-%H%M%S)"
 TEMPLATE="$PWD/experiment"
 RUN_DIR="$PWD/runs/$RUN_ID"
@@ -62,17 +63,28 @@ docker run --rm \
     lake build Midnight.Import
   '
 
-echo "Starting agent on $RUN_DIR"
+echo "Starting agent on $RUN_DIR (timeout $AGENT_TIMEOUT)"
+set +e
 docker run --rm \
   --platform "$PLATFORM" \
   -e CURSOR_API_KEY \
   -v "$RUN_DIR:/work" \
   -w /work \
   "$IMAGE" \
+  timeout --signal=TERM --kill-after=30s "$AGENT_TIMEOUT" \
   agent -p --force --trust --sandbox disabled \
   --model gpt-5.6-sol-high \
   --workspace /work \
   "Prove updatePositionViewProperties. Follow README.md. Stop when ./check/check_proof.sh exits 0."
+AGENT_STATUS=$?
+set -e
+if [[ "$AGENT_STATUS" -eq 124 ]]; then
+  echo "Agent timed out after $AGENT_TIMEOUT — run kept at $RUN_DIR"
+  exit 124
+elif [[ "$AGENT_STATUS" -ne 0 ]]; then
+  echo "Agent exited with status $AGENT_STATUS — run kept at $RUN_DIR"
+  exit "$AGENT_STATUS"
+fi
 
 echo "Checking proof"
 if docker run --rm \
