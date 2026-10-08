@@ -53,14 +53,16 @@ docker run --rm \
       mkdir -p .lake/solidity-import
       cp -a /cache/solidity-import/solc-0.8.34 .lake/solidity-import/solc-0.8.34
     fi
-    lake update
-    python3 .lake/packages/verity/scripts/setup_solc_import.py \
-      --output .lake/solidity-import/solc-0.8.34
+    lake exe cache get Mathlib.Tactic
+    if [[ ! -x .lake/solidity-import/solc-0.8.34 ]]; then
+      python3 .lake/packages/verity/scripts/setup_solc_import.py \
+        --output .lake/solidity-import/solc-0.8.34
+    fi
     rm -rf /cache/packages
     cp -a .lake/packages /cache/packages
     mkdir -p /cache/solidity-import
     cp -a .lake/solidity-import/solc-0.8.34 /cache/solidity-import/solc-0.8.34
-    lake build Midnight.Import
+    lake build Midnight.Import Midnight.Spec Compiler.SolidityImport.Proofs
   '
 
 echo "Starting agent on $RUN_DIR (timeout $AGENT_TIMEOUT)"

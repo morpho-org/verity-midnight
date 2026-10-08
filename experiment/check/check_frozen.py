@@ -17,7 +17,7 @@ EXPECTED = {
     'check/Goal.lean': 'fc36b125b4acb6ff3462efdefc745289609e7a50e6db644c4931f79c940383cc',
     'check/check_axioms.py': 'dc115caa2fea9e22d681e2943d4a4fa111d35753cc5863182e8ee92e2a5ac595',
     'check/check_proof.sh': 'ee10d3c4985b4f5b2bd5c626ce347efe8ad948347ce1a82a6a81b77944cc5fd0',
-    'README.md': '5cf31ebbbf03c44ffe5ef820ec6e31ccbd47e00a91c2c1d444255d5488845c68',
+    'README.md': '479862f5700ce8205d6416ca462463861327e6afc02f247e9bb098daf9e28d59',
     'vendor/midnight/.gitattributes': '8faa5cd20a6f243e56a1426736cae6f4fcc05ce0c3f95fa16b5bbb0f06d16182',
     'vendor/midnight/.github/workflows/certora.yml': 'a74ffb8fa0869b0929e9ebd62b4436de119a1e26564ea4d545037c18458209f8',
     'vendor/midnight/.github/workflows/forge-old.yml': '24dba7a0521f557e067b922580d05e6ec89d559aba5a14afa095e3fb851d5394',
@@ -500,7 +500,7 @@ def main() -> None:
     vendor = {
         p.relative_to(ROOT).as_posix()
         for p in (ROOT / "vendor").rglob("*")
-        if p.is_file()
+        if p.is_file() and p.name != ".git"
     }
     expected_vendor = {rel for rel in EXPECTED if rel.startswith("vendor/")}
     extra = sorted(vendor - expected_vendor)
