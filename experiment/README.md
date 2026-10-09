@@ -38,7 +38,7 @@ Import `Compiler.SolidityImport.Proofs` (and `Compiler.SolidityImport.Access`):
   - functionBody <model>.model "<function>" gets the list of statements in the <function>
   - `splitAfter "<localVar>"` slices the body by Solidity local variable names
   - In case the concrete value of some heavy computation `c` is not needed for the property, `split_prefix`, `split_prefix_continue`, `ends_return`, and `list_frame` (dischargeable `by decide`) step across those slices and frame unmodified bindings accross `c` without executing `c`.
-  - `evalExpr_structMember2_param`, `evalExpr_structMember_param`, `sub_word`, `mul_word128`, `div_2ord`, `mask_eq`, and `word_of_small` discharge the storage reads and 256-bit word arithmetic.
+  - `evalExpr_structMember2_param`, `evalExpr_structMember_param`, `sub_word`, `mul_word128`, `div_word`, `mask_eq`, and `word_of_small` discharge the storage reads and 256-bit word arithmetic.
 
 lean-lsp MCP (`scripts/lean-mcp.sh`) is required. If it is unavailable, write
 `out/mcp-unavailable` and stop (see `AGENTS.md`); do not continue shell-only.

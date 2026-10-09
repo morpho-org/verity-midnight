@@ -7,15 +7,20 @@ cd "$(dirname "$0")"
 
 PLATFORM="${PLATFORM:-linux/amd64}"
 IMAGE="${IMAGE:-midnight-agent}"
-AGENT_TIMEOUT="${AGENT_TIMEOUT:-1h}"
+AGENT_TIMEOUT="${AGENT_TIMEOUT:-120m}"
 AGENT_MODEL="${AGENT_MODEL:-gpt-5.6-sol-high}"
-# Second Cursor agent that prints read-only progress to the host stdout.
+# Second Cursor agent that journals progress and writes a retrospective.
 MONITOR="${MONITOR:-1}"
 MONITOR_MODEL="${MONITOR_MODEL:-$AGENT_MODEL}"
 MONITOR_INTERVAL="${MONITOR_INTERVAL:-2m}"
+# How long to wait for the monitor's final retrospective after the prover stops.
+MONITOR_RETRO_TIMEOUT="${MONITOR_RETRO_TIMEOUT:-20m}"
 RUN_ID="$(date +%Y%m%d-%H%M%S)"
 TEMPLATE="$PWD/experiment"
 RUN_DIR="$PWD/runs/$RUN_ID"
+# Monitor state is outside the prover workspace so the prover cannot see or
+# be affected by journal / retrospective writes.
+MONITOR_DIR="$PWD/monitor-logs/$RUN_ID"
 RESULT_DIR="$PWD/results/$RUN_ID"
 CACHE_DIR="$PWD/cache"
 ROOT="$PWD"
@@ -30,7 +35,7 @@ parse_duration_secs() {
   esac
 }
 
-mkdir -p "$PWD/runs" "$PWD/results" "$CACHE_DIR"
+mkdir -p "$PWD/runs" "$PWD/results" "$PWD/monitor-logs" "$CACHE_DIR"
 
 # Seed package cache from a leftover template .lake once, then drop it from experiment/.
 if [[ ! -d "$CACHE_DIR/packages" && -d "$TEMPLATE/.lake/packages" ]]; then
@@ -104,7 +109,9 @@ fi
 PROVER_NAME="midnight-prover-$RUN_ID"
 MONITOR_NAME="midnight-monitor-$RUN_ID"
 PROVER_CURSOR="$RUN_DIR/.prover-cursor"
-mkdir -p "$PROVER_CURSOR" "$RUN_DIR/out"
+MONITOR_CURSOR="$MONITOR_DIR/.cursor"
+mkdir -p "$PROVER_CURSOR" "$MONITOR_DIR" "$MONITOR_CURSOR"
+MONITOR_STARTED=0
 
 cleanup_agents() {
   docker stop "$MONITOR_NAME" >/dev/null 2>&1 || true
@@ -136,19 +143,25 @@ PROVER_LOGS_PID=$!
 if [[ "$MONITOR" != "0" ]]; then
   MONITOR_INTERVAL_SECS="$(parse_duration_secs "$MONITOR_INTERVAL")"
   echo "Starting monitor agent (model $MONITOR_MODEL, every $MONITOR_INTERVAL → ${MONITOR_INTERVAL_SECS}s)"
+  echo "Monitor media (RW): $MONITOR_DIR — prover workspace mounted read-only at /prover"
   docker run -d --name "$MONITOR_NAME" \
     --platform "$PLATFORM" \
     -e CURSOR_API_KEY \
     -e MONITOR_MODEL="$MONITOR_MODEL" \
     -e MONITOR_INTERVAL_SECS="$MONITOR_INTERVAL_SECS" \
+    -e PROVER_ROOT_MOUNT=/prover \
     -e PROVER_CURSOR_MOUNT=/prover-cursor \
-    -v "$RUN_DIR:/work" \
+    -e MONITOR_DIR_MOUNT=/monitor \
+    -v "$MONITOR_DIR:/monitor" \
+    -v "$RUN_DIR:/prover:ro" \
     -v "$PROVER_CURSOR:/prover-cursor:ro" \
+    -v "$MONITOR_CURSOR:/root/.cursor" \
     -v "$ROOT/scripts/monitor-prover-loop.sh:/monitor-prover-loop.sh:ro" \
-    -w /work \
+    -w /monitor \
     "$IMAGE" \
     bash /monitor-prover-loop.sh \
     >/dev/null
+  MONITOR_STARTED=1
 
   docker logs -f "$MONITOR_NAME" 2>&1 | while IFS= read -r line; do printf '[monitor] %s\n' "$line"; done &
   MONITOR_LOGS_PID=$!
@@ -158,15 +171,42 @@ set +e
 AGENT_STATUS="$(docker wait "$PROVER_NAME")"
 set -e
 
-# Drain a moment of log follow, then tear down monitor / log pumps.
+# Ask the monitor to write its retrospective, then wait for it to finish.
+if [[ "$MONITOR_STARTED" -eq 1 ]]; then
+  touch "$MONITOR_DIR/stop"
+  MONITOR_RETRO_SECS="$(parse_duration_secs "$MONITOR_RETRO_TIMEOUT")"
+  echo "Prover finished (status $AGENT_STATUS); waiting up to $MONITOR_RETRO_TIMEOUT (${MONITOR_RETRO_SECS}s) for monitor retrospective"
+  set +e
+  docker wait "$MONITOR_NAME" >/dev/null &
+  MONITOR_WAIT_PID=$!
+  elapsed=0
+  while kill -0 "$MONITOR_WAIT_PID" >/dev/null 2>&1; do
+    if (( elapsed >= MONITOR_RETRO_SECS )); then
+      echo "Monitor retrospective timed out after $MONITOR_RETRO_TIMEOUT — stopping monitor"
+      docker stop "$MONITOR_NAME" >/dev/null 2>&1 || true
+      break
+    fi
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+  wait "$MONITOR_WAIT_PID" 2>/dev/null
+  set -e
+fi
+
 sleep 1
 if [[ -n "${MONITOR_LOGS_PID:-}" ]]; then kill "$MONITOR_LOGS_PID" >/dev/null 2>&1 || true; fi
 if [[ -n "${PROVER_LOGS_PID:-}" ]]; then kill "$PROVER_LOGS_PID" >/dev/null 2>&1 || true; fi
-docker stop "$MONITOR_NAME" >/dev/null 2>&1 || true
 docker rm -f "$MONITOR_NAME" >/dev/null 2>&1 || true
-# Keep prover container until we read exit details; remove in trap/cleanup.
 docker rm -f "$PROVER_NAME" >/dev/null 2>&1 || true
 trap - EXIT
+
+if [[ -f "$MONITOR_DIR/retrospective.md" ]]; then
+  echo "======== monitor retrospective ========"
+  cat "$MONITOR_DIR/retrospective.md"
+  echo "======== end retrospective (also at $MONITOR_DIR/) ========"
+elif [[ "$MONITOR_STARTED" -eq 1 ]]; then
+  echo "Monitor retrospective missing — see $MONITOR_DIR/journal.md" >&2
+fi
 
 if [[ -f "$RUN_DIR/out/mcp-unavailable" ]]; then
   echo "Agent reported lean-lsp MCP unavailable — run kept at $RUN_DIR"
@@ -192,11 +232,22 @@ then
   mkdir -p "$RESULT_DIR"
   cp -a "$RUN_DIR/Midnight" "$RESULT_DIR/"
   cp -a "$RUN_DIR/out" "$RESULT_DIR/" 2>/dev/null || true
+  # Copy monitor artifacts only — skip .cursor (contains unix sockets cp can't copy).
+  if [[ -d "$MONITOR_DIR" ]]; then
+    mkdir -p "$RESULT_DIR/monitor"
+    for f in journal.md retrospective.md; do
+      if [[ -f "$MONITOR_DIR/$f" ]]; then
+        cp "$MONITOR_DIR/$f" "$RESULT_DIR/monitor/"
+      fi
+    done
+  fi
+
   printf '%s\n' "$RUN_ID" > "$RESULT_DIR/RUN_ID"
   echo "SUCCESS — proof saved to $RESULT_DIR"
   echo "Run directory kept at $RUN_DIR"
+  echo "Monitor logs kept at $MONITOR_DIR"
   exit 0
 else
-  echo "FAILED — proof not extracted. Inspect $RUN_DIR"
+  echo "FAILED — proof not extracted. Inspect $RUN_DIR (monitor: $MONITOR_DIR)"
   exit 1
 fi

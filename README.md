@@ -31,7 +31,7 @@ What the script does:
 2. Build the `midnight-agent` image (Lean 4.31, elan, Cursor `agent`, Python)
 3. Inside Docker: `lake update`, install pinned linux `solc`,
    `lake build Midnight.Import` (`lean-lsp-mcp` is already in the image)
-4. Run the Cursor agent on that run directory (default timeout **1h**), with
+4. Run the Cursor agent on that run directory (default timeout **120m**), with
    `--approve-mcps` so `.cursor/mcp.json` → `scripts/lean-mcp.sh` is available
 5. Run `./check/check_proof.sh` in Docker
 6. On success, copy `Midnight/` (and `out/` if present) to `results/<timestamp>/`
@@ -46,17 +46,19 @@ What the script does:
 |----------|---------|---------|
 | `CURSOR_API_KEY` | (required) | Auth for the agent CLI |
 | `AGENT_MODEL` | `gpt-5.6-sol-high` | Prover Cursor agent `--model` id (`agent --list-models`) |
-| `AGENT_TIMEOUT` | `1h` | Cap on the prover agent step only (`timeout(1)` inside the container) |
+| `AGENT_TIMEOUT` | `120m` | Cap on the prover agent step only (`timeout(1)` inside the container) |
 | `MONITOR` | `1` | Set `0` to disable the sidecar progress agent |
-| `MONITOR_MODEL` | `$AGENT_MODEL` | Model for the read-only monitor agent |
-| `MONITOR_INTERVAL` | `2m` | How often the monitor agent reports (`30s` / `2m` / `1h`) |
+| `MONITOR_MODEL` | `$AGENT_MODEL` | Model for the monitor / retrospective agent |
+| `MONITOR_INTERVAL` | `2m` | How often the monitor journals (`30s` / `2m` / `1h`) |
+| `MONITOR_RETRO_TIMEOUT` | `20m` | Max wait after the prover stops for the retrospective |
 | `PLATFORM` | `linux/amd64` | Docker platform |
 | `IMAGE` | `midnight-agent` | Image name |
 
 While the prover runs, `[prover]` and `[monitor]` lines are streamed to the host
-stdout. The monitor only reads `/work` plus the prover’s Cursor transcripts; it
-must not edit the proof.
-
+stdout. The monitor keeps one resumed Cursor session with a separate RW volume
+(`monitor-logs/<id>/`); the prover workspace is mounted **read-only** at
+`/prover`. Journal and retrospective live only under `monitor-logs/<id>/`
+(not visible to the prover).
 Examples:
 
 ```sh
@@ -85,7 +87,8 @@ under `results/` when the checker passes.
 | Path | Role |
 |------|------|
 | `experiment/` | Immutable task template (stub `Proof.lean`, frozen Import/Spec/check/vendor); `check_frozen.py --start` pins the stub before each trial |
-| `runs/<id>/` | One trial’s workspace (gitignored) |
+| `runs/<id>/` | Prover trial workspace (gitignored) |
+| `monitor-logs/<id>/` | Monitor journal / retrospective (RW for monitor only; gitignored) |
 | `results/<id>/` | Extracted proof after a passing check (gitignored) |
 | `cache/` | Warm Lake packages + linux `solc` between runs (gitignored) |
 | `Dockerfile` | Toolchain image |
