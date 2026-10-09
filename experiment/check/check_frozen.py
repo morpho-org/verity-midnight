@@ -1,11 +1,23 @@
 #!/usr/bin/env python3
-"""Fail if a frozen task file was edited or a vendor file was added or removed."""
+"""Fail if a frozen task file was edited or a vendor file was added or removed.
+
+By default (used by check_proof.sh after the agent runs), only EXPECTED is
+checked — Midnight/Proof.lean and new files under Midnight/ may change.
+
+With --start (used by run-experiment.sh before the agent), also check INITIAL
+so each trial begins from the known stub Proof.lean.
+"""
 
 import hashlib
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+# Editable by the agent; verified only with --start.
+INITIAL = {
+    'Midnight/Proof.lean': '1a5f992b1c5314b007c40854f199347a93a5045c091f88225f431bbd5d4bca7b',
+}
 
 EXPECTED = {
     'Midnight.lean': 'b6b1dce82ab672ceea9235dbe00d25d8a7952b2d677af13dc96cb1a57f97075a',
@@ -17,7 +29,7 @@ EXPECTED = {
     'check/Goal.lean': 'fc36b125b4acb6ff3462efdefc745289609e7a50e6db644c4931f79c940383cc',
     'check/check_axioms.py': 'dc115caa2fea9e22d681e2943d4a4fa111d35753cc5863182e8ee92e2a5ac595',
     'check/check_proof.sh': 'ee10d3c4985b4f5b2bd5c626ce347efe8ad948347ce1a82a6a81b77944cc5fd0',
-    'README.md': '5cf31ebbbf03c44ffe5ef820ec6e31ccbd47e00a91c2c1d444255d5488845c68',
+    'README.md': '546a9d0eaf2afed748b4890c1757712791df6f9aed6b7dbd8cb0d9215f6874cc',
     'vendor/midnight/.gitattributes': '8faa5cd20a6f243e56a1426736cae6f4fcc05ce0c3f95fa16b5bbb0f06d16182',
     'vendor/midnight/.github/workflows/certora.yml': 'a74ffb8fa0869b0929e9ebd62b4436de119a1e26564ea4d545037c18458209f8',
     'vendor/midnight/.github/workflows/forge-old.yml': '24dba7a0521f557e067b922580d05e6ec89d559aba5a14afa095e3fb851d5394',
@@ -41,58 +53,61 @@ EXPECTED = {
     'vendor/midnight/audits/2026-09-02-blue-fallback-rolling-trust.pdf': 'c6ec8a6557b6d23a116c710c0d02a7cb23a56c1b5dcff77766cfbdbfd274940a',
     'vendor/midnight/audits/2026-09-15-whitelist-enter-gate-blackthorn.pdf': '9f0961b8818bb9a1840e3fe2b1c54c57a6435316d17aee427a988541ba60a94b',
     'vendor/midnight/audits/2026-09-15-whitelist-enter-gate-spearbit.pdf': '7c70ba92ebeab6e40b34bd9134bf80558a44e8023bc478f742694d00eb7944b4',
-    'vendor/midnight/certora/README.md': '7b917459e69663000f4beb1346eb2deb1196e5387dc4404e196d18a722821393',
-    'vendor/midnight/certora/confs/BalanceEffects.conf': '74bbaf9a920f91f796c880f449fe4dc0e81f4e1f021af0fc3f17eeeae0b3de96',
-    'vendor/midnight/certora/confs/Bitmap.conf': 'c099f51baf6f583c741ddf14521464566cf344fd657d2ed12c1596da6020f36d',
+    'vendor/midnight/audits/2026-09-24-rate-ratifier-blackthorn.pdf': '68170062e3a3e30bd35a4ebe26da5c67291a4d579b5bfa53ce3d741edee987b7',
+    'vendor/midnight/audits/2026-09-24-rate-ratifier-trust.pdf': '525fddc42d669e76a8986c19dbe46e9f440b94734924e83ed93160766605e2e6',
+    'vendor/midnight/certora/README.md': 'e072e278fb783e041da9990a5b80ab2abc18a45d40979cd2b6129dde3e4733a5',
+    'vendor/midnight/certora/confs/BalanceEffects.conf': '5fe6d3248d02513a88f7f2d63f541eee5733d1c82c3c924e0d7d510a98a4eb9b',
+    'vendor/midnight/certora/confs/Bitmap.conf': 'c7b5c025f3b98d6f4d4c1ad65c1de94b0166538eb7d17a952f9aedc5b3b40c20',
     'vendor/midnight/certora/confs/CollateralBitmap.conf': 'df5a246b94c40bf58b2d2491a7ab1c212bec86ac862b51751b9931b3ac5b6d40',
     'vendor/midnight/certora/confs/Consume.conf': 'ac26639ebfcb96a1e41bfdf0107ca286f8f4828116038b40d5c2d5de54bf2b8f',
     'vendor/midnight/certora/confs/ContinuousFee.conf': '2b7503c94e2fb06f93fef7b61c829aa0e66d868bf7496344d3b1a4f141804900',
     'vendor/midnight/certora/confs/ContinuousFeeReverts.conf': '19ebdf9a067aa88d944a865668de79977e5b511e2880bf33a6f8a6aad10a3aa5',
-    'vendor/midnight/certora/confs/CreatedMarkets.conf': '82f039efa511240cb96cfa6a999d2ada44d7febbfd769eb7947d0c703199310e',
-    'vendor/midnight/certora/confs/EcrecoverAuthorizer.conf': 'bf2ee82386fc202144b1ea95faa5013971945357fe7c9d892534f1a97e61fb1f',
-    'vendor/midnight/certora/confs/EmptyOffer.conf': 'bcd5b6f0b4e2a0cefc8cb40e53a6b12fd784025f4bc72ba09bbafe313d2b5e14',
+    'vendor/midnight/certora/confs/CreatedMarkets.conf': 'ff8887f7efb9f09a2cf11d346be4c7a26979a2c738aea106ebc3f5d445b8439d',
+    'vendor/midnight/certora/confs/EcrecoverAuthorizer.conf': 'd9be39d92c6dc79a9d209cd8cf2493997b1d9ecf6654bf561ec759238e6eef3b',
+    'vendor/midnight/certora/confs/EmptyOffer.conf': '1d2a5050beb7a4572bdb8efc060b81d949f8441f4cf2d549172b2e15b8d59fdb',
     'vendor/midnight/certora/confs/ExactMath.conf': '7011d0ae8bebad9c96bef12c3d55323c3f160de47db1d65a7cf0937b135c046c',
-    'vendor/midnight/certora/confs/Healthiness.conf': '899db2981293a873a39cab37e2e4ecb33ad31216d283ec0265465f6fe0126fa7',
+    'vendor/midnight/certora/confs/Healthiness.conf': '48c3fbaf43d040b8eeb8c77fdfb5b1762231586b1ace1c9007f77b1ac7deaa8c',
     'vendor/midnight/certora/confs/Liquidate.conf': '659e2f2e96dbb72b6d6decc1e9f5383005bc0eacad55697c86aa16bcc11c2849',
     'vendor/midnight/certora/confs/LiquidationBoundedByLIF.conf': '97e2e1fa020fe049e2c968504d9f7ebec5490d6b583ff325882780832e88b33e',
     'vendor/midnight/certora/confs/LiquidationProfitability.conf': 'fcfea3b27682c6c363632841f8dd35a4170beb5cd873ab60af0c37ea2980c3a8',
     'vendor/midnight/certora/confs/LossFactor.conf': '88cdb637c832cb769e78c381ca5bd064b3dcae40bc99d660db24fbaba82b1692',
     'vendor/midnight/certora/confs/MarketNotReadBeforeCreated.conf': '9961331b814a44afaf59fb50dbde967566c8332b0cb0e764ddcdd6270cc97406',
     'vendor/midnight/certora/confs/MaxRepaidHealthy.conf': '076c4188f8700e1d7d7de6fa8ddc610467e825d43d3ac9de55d1b12763d9ce33',
-    'vendor/midnight/certora/confs/Midnight.conf': '6b263f765b9f140b5cb9e26aa767987d44d25c37b9e3e64119bddef6c02fa09d',
+    'vendor/midnight/certora/confs/Midnight.conf': 'aa1479f9df9f65659ddb43bb4e1be6ea4f89f5efc9a4c35440c9fade3bc9cc31',
     'vendor/midnight/certora/confs/MulDiv.conf': 'f9333697dfc615bf3895b254130a0ed5df2c0ebae44ab4315a9aafab7d2c3bdb',
     'vendor/midnight/certora/confs/NetCredit.conf': '9c264fa0a4eb2e8b2850fc072ad394ad4cb946ee753c81d18813b5ea99ae38d1',
     'vendor/midnight/certora/confs/NoDebtWithoutCollateral.conf': 'ab2ced2a37e890e92c8e49011b37e4cb891dfbdb089cdce70bec43d725982267',
     'vendor/midnight/certora/confs/NoDebtWithoutCollateralNativeECF.conf': '0c63b619c2406fda0f041f97c51c63cc24178c2e4f392da1e92f87cd10070fc9',
     'vendor/midnight/certora/confs/NoDivisionByZero.conf': 'cce5c46f463a06642e53e0106a466cab418451fcaee0a72a0e7cd5b217025f01',
-    'vendor/midnight/certora/confs/NoMultiplicationOverflow.conf': '22aa346651538ce1299b7607b40189e2d60076bac08fb667be03f488d32c865b',
-    'vendor/midnight/certora/confs/NotCreatedMarket.conf': 'e14108beef329d932408d95d9456ab919b5971c258bb89d57eb4650266b1d03e',
-    'vendor/midnight/certora/confs/OfferTreeMembership.conf': '19448a9fcc53e9e55167c3a2127e1788898d829975135e17d4dea81618f40c0b',
-    'vendor/midnight/certora/confs/OfferTreeWellFormed.conf': '0e0f2732a550cd2b2a65400d56a1739f2a69d2e17b6c977ac321da8fac03b62a',
-    'vendor/midnight/certora/confs/OnlyAuthorizedCanChange.conf': '94afcbad40e5a51e55f6ffa1860a81920ea3a74aec01538a2a416dacb2b135b9',
-    'vendor/midnight/certora/confs/OnlyAuthorizedCanChangeUpdatedValues.conf': '2395d663f1f4a86b6c61b2c5df077a05f3d280ac1ffc4ee5d6e6fbabbfc38fd2',
+    'vendor/midnight/certora/confs/NoMultiplicationOverflow.conf': 'fbe578ad91bcc3ddfd478ae9c3d5f9857668746a99cf848094f757f752469ddf',
+    'vendor/midnight/certora/confs/NotCreatedMarket.conf': '46f80a70fd036b6dad32ebe0719862732154d6cd30113078dda911bfd85e7855',
+    'vendor/midnight/certora/confs/OfferTreeMembership.conf': '745b902c683de62c46d319820962368cdc93c5077f24ad7258613c09285b0858',
+    'vendor/midnight/certora/confs/OfferTreeWellFormed.conf': 'ed3b127950a2b33f57d5ba6960060b57f4ac51f0267d0256b9a87b86b146ba8f',
+    'vendor/midnight/certora/confs/OnlyAuthorizedCanChange.conf': 'c1755095130ac1f55ef6b2eafb1d5661ed352c3c588e490e56acf29619d22658',
+    'vendor/midnight/certora/confs/OnlyAuthorizedCanChangeUpdatedValues.conf': '04a677b54aa9f4391772d47d0b327c508f113ab79f597321fc58a00bb00ccb4f',
     'vendor/midnight/certora/confs/OnlyExplicitPayerCanLoseTokens.conf': '8f3776f067d036061f2eff4d3f10fc2a64d3650967033520944afb7913b88430',
     'vendor/midnight/certora/confs/PostDropRealizableBadDebt.conf': '42b9ff03ccf1c2ef705e50a70b175827931fd7ccdd5bf3ca77f29cb8804a489f',
     'vendor/midnight/certora/confs/PostMaturityDebt.conf': '61b4fb8e90a9fb05794e6393a84f142df0870bfab65d4addeb43c468a5b626c2',
+    'vendor/midnight/certora/confs/PostMaturityWithdrawable.conf': 'ae79a934e489b8f2054918da74fcb2c081951f4f2d7854f52858399175827343',
     'vendor/midnight/certora/confs/PriceToTick.conf': 'e644177ee86ec070c25ef4c43af938815a4a75e64da5120bc4549bf6cce2b7f4',
-    'vendor/midnight/certora/confs/Ratification.conf': '92cbdb264388e6dbf439063bd64236b3f6b591edef7a694450e77fd105b045ce',
+    'vendor/midnight/certora/confs/Ratification.conf': 'c506b26b1754fe97fc60a3a43b198f0669d75c722a65517425de0da399c3815f',
     'vendor/midnight/certora/confs/RealizableBadDebt.conf': 'd280447d240022802be5fbf7855852f27df580ac94930c611e9a80458fba8c0c',
     'vendor/midnight/certora/confs/RealizableBadDebtLiquidate.conf': '54a7e917c0df48d085eec5ae0323317d9160765ff76aa59811ed72329a5d5960',
     'vendor/midnight/certora/confs/Reentrancy.conf': '04bb851192e69a86c3d26d6cb3590115f268dcd403bfaa7de7bbca85268e3a30',
     'vendor/midnight/certora/confs/ReentrancyView.conf': '40fc134be3250cac258241fb03beb1ac5c2f5d12735c74dcb3a88e56a588f98f',
     'vendor/midnight/certora/confs/Reverts.conf': 'dd346e5d6eb7fa0d82a78989d6c737d72a4e5c4f568de9f52b4370be2384f7be',
     'vendor/midnight/certora/confs/Role.conf': 'c5550306a6e5c711eaaf8b2984298dce60371f6ee79f7cd1c4308c883d4295d3',
-    'vendor/midnight/certora/confs/SettlementFeeBoundaries.conf': '82367a841c52344bb3aafeea47039803086fc00fa76fa9336ee644cf5787a52e',
+    'vendor/midnight/certora/confs/SettlementFeeBoundaries.conf': 'cedf9816959968974150fe70b176360e653f5d6068c2968f301f9e49bfe0bbe1',
     'vendor/midnight/certora/confs/SettlementFeeSpread.conf': '31b15dbc5eb80dd2336478748bd22a7565dd88c0658a5bac5704cc2ad6937121',
     'vendor/midnight/certora/confs/Solvency.conf': '053c14e2ab5aaf3e99177df47fe944625b1f3a0fae793d48fbb2e1cedd314464',
-    'vendor/midnight/certora/confs/SplitDoesNotPunishMakerOrFavorTaker.conf': '7b09c55a15e842209a0fee03f1cc21b42fb5b3194668575f07574f395d29eb08',
-    'vendor/midnight/certora/confs/SplitPreservesAccounting.conf': '2ef3aa051af5f5b491728f756e782a041c6eeaafeb7395947f4664be15e3234a',
-    'vendor/midnight/certora/confs/SumOfCreditsAxiomatic.conf': '98ca5b8406d6b2a385f7bd278291923a42ed6611f5c3eff9bfcc35dd28424e12',
+    'vendor/midnight/certora/confs/SplitDoesNotPunishMakerOrFavorTaker.conf': 'b552793252e28572280639f38c7fbb6411b76eb0c7042b57bfc704dd43617f6c',
+    'vendor/midnight/certora/confs/SplitPreservesAccounting.conf': '7529079de69b29d3f2f5aa88dccf1e603b6dba96a4098609fac0acce0a92a9e7',
+    'vendor/midnight/certora/confs/SumOfCreditsAxiomatic.conf': '0492d55be540d80062b3cd37490fec6966b233af563f896b8e536380ef1d6171',
     'vendor/midnight/certora/confs/TakeAmountsLibInvertibility.conf': 'c50f04fec6e97aedfadbf56504ade921f9f43542d8c82bb90f97305dc7593951',
     'vendor/midnight/certora/confs/TickToPrice.conf': '656843dbbf80d1e1124beed992d089c784f08aa901b9d68923bfd68246e6719c',
     'vendor/midnight/certora/confs/TickToPriceIsMonotonic.conf': 'fc02ae7a1e1a777d850d781f26f07bd5411d4b5d474c2924d390c8d3644074f3',
     'vendor/midnight/certora/confs/UpdateBeforeCredit.conf': '1bc45b3469036243e6f1c00d77656fd24ac90ce13cc1d3d2b3ded1f6b0dd28e9',
-    'vendor/midnight/certora/confs/UpdatePositionView.conf': 'cd0a24ed4240db7d80a9ddaafd5efb1c06557523da73b06c2a3c9b545de12bc0',
+    'vendor/midnight/certora/confs/UpdatePositionView.conf': 'af3ecb5d8515d085c3135e901a9c4801dc757f230f5037e7d7919578eace6850',
     'vendor/midnight/certora/confs/WithdrawableMonotonicity.conf': '1affbd88100e093c8a80aaf2ebb6801065e3a3142891e80bd59af6e16077aefd',
     'vendor/midnight/certora/helpers/FlashLiquidateCallback.sol': 'a227ef52a7c3d55ba6c8acc2047909396f278eca9caf939ef6c03df150c80aa4',
     'vendor/midnight/certora/helpers/GenerateRoot.sol': '149d302705f2ceb1b5caf8054e2121bc244f3f0d72b35a2ff1a9ff32e8823119',
@@ -104,59 +119,60 @@ EXPECTED = {
     'vendor/midnight/certora/helpers/TakeAmountsLibHarness.sol': 'af42374141cd582e6b20bf19cb1ce1b199b0dc6c949b4b1cccb954cdeac3b574',
     'vendor/midnight/certora/helpers/TickLibWrapper.sol': '9b0bb33e4a7fa45aee35eb77fd0c9b388b407a1a8be01de768eef9e89c8cdb35',
     'vendor/midnight/certora/helpers/Utils.sol': '38e10a1c0a12dd839ab9a2378825ab9534736de4bb4d2d92fc1786240beacc9c',
-    'vendor/midnight/certora/specs/BalanceEffects.spec': '72d1de7593ea06e41c3181d93035c66ee71773f941a3035299bbdbb3971d349f',
-    'vendor/midnight/certora/specs/Bitmap.spec': 'ab18b22ee5650870bf3831d51de091f16d2cf9c4119d4a3733a0d0d6f595b15b',
-    'vendor/midnight/certora/specs/BitmapSummaries.spec': 'cbab9c60ca2d33fa2797459fb2779ff15ad0e59f3b793df681471377674635eb',
-    'vendor/midnight/certora/specs/CollateralBitmap.spec': '265eaeafcaf6d24d2f05ad49a2bd4174e7e1054b2f24cfc4fb628857395ca3fa',
-    'vendor/midnight/certora/specs/Consume.spec': '5c47219f7a2b8dc2c5a2f574ecb019b19a491c0f05545b93d402fa396943749c',
-    'vendor/midnight/certora/specs/ContinuousFee.spec': '8ff0b92d485be791532ade3f523af477f37f0f271e436a86d2c604a647019be2',
-    'vendor/midnight/certora/specs/ContinuousFeeReverts.spec': '75139818c236198d4ea51a5c87561e3774e69a0b925183b3127ff5084408918a',
-    'vendor/midnight/certora/specs/CreatedMarkets.spec': '9e44b8d2035f2f683c79d7134f90bf6ba185c26d4eba0e017369fbb313d6315d',
-    'vendor/midnight/certora/specs/EcrecoverAuthorizer.spec': 'f6c1b44b3c32f458394b71c254dd50afe2a5db84c9a595be184c6f155c2b6ce5',
+    'vendor/midnight/certora/specs/BalanceEffects.spec': '33d8018dd80785a5fe1e0fca7db3693092fc7ca5554d24b6f578407ac128b6fe',
+    'vendor/midnight/certora/specs/Bitmap.spec': '0512ebabca5c63eceeb792a2633f6b88ff9541c8573097f7d5d41561227ad735',
+    'vendor/midnight/certora/specs/BitmapSummaries.spec': '1fc93ea932f2a113e5a2d3681b2eb37a13922aa5035feb33be2e3b15992c6f52',
+    'vendor/midnight/certora/specs/CollateralBitmap.spec': 'acae8c26e670ab647a7631858ec8a75315aa8b883d50e51f79434f20c7745209',
+    'vendor/midnight/certora/specs/Consume.spec': 'b27e70229900da1ccb251be11d596f40c52b1c5c2be8e6ed2b27ebe2833509a3',
+    'vendor/midnight/certora/specs/ContinuousFee.spec': '09d33d6407d9fbdfaa7ddc3b9fa39c387436c51464485e4d19de7732a77fb507',
+    'vendor/midnight/certora/specs/ContinuousFeeReverts.spec': '07ce2d7a442b2885c573925a8a17914680fb194d49b2a1fd514d6a77c44015f7',
+    'vendor/midnight/certora/specs/CreatedMarkets.spec': '354d04dd606dd9e71c4ef2e86d7ebaa7da48167af8f6dad743ceb492636d2a97',
+    'vendor/midnight/certora/specs/EcrecoverAuthorizer.spec': 'e8d5216b6da86af31734061787d5d50d8a91072d42f193579b3ac0bf24feeca1',
     'vendor/midnight/certora/specs/EmptyOffer.spec': 'cc76a36d646db852ea09629e4a2c369d2cfe37074142f870a53ed6d6a464a22c',
-    'vendor/midnight/certora/specs/ExactMath.spec': '0e91b29ac13c6d2f97837fcba34fa779bef70ee2360e3792725c1a2e19eb31f2',
-    'vendor/midnight/certora/specs/Healthiness.spec': '0e5ffb97e57f6b38c88c6bd29a7b2dccfffe40df9c8f2cb9e9fe26bfb4fd1fa8',
-    'vendor/midnight/certora/specs/Liquidate.spec': '0d2267ec7592d22d96d6643dfe5e02f5808823e173c1a64b9e4c2cdc1218fda4',
-    'vendor/midnight/certora/specs/LiquidationBoundedByLIF.spec': 'f3d594cce5cede15dfaf4f71a76c4657840a9edf549cec4336fddf888c16fc64',
-    'vendor/midnight/certora/specs/LiquidationProfitability.spec': '32de36cd1e2d83049499c5945e45ea597be93612568d25c8a97da7bf69d50537',
-    'vendor/midnight/certora/specs/LossFactor.spec': '3638db713c9ddb291a0fbd80b13a0ec1faab8d279be941e4710be79914343e09',
-    'vendor/midnight/certora/specs/MarketNotReadBeforeCreated.spec': '369ae6eb836336253ad30944e95a5f7648b8aab417276f1cfb9f2c4c5ec1f5a7',
-    'vendor/midnight/certora/specs/MaxRepaidHealthy.spec': 'd1f7a12c88ecee23105c6a617899009818ed6b349967c2fbd991f649488ee3f6',
-    'vendor/midnight/certora/specs/Midnight.spec': '5c229a5886950b7f7efc09b100a65d55507ddbdba657f4000d87088ff66361a7',
-    'vendor/midnight/certora/specs/MulDiv.spec': 'dfb908284f2819ef65d1c1a28c51a790760ba40bafe78f9fe6791c5776a7b284',
-    'vendor/midnight/certora/specs/MulDivAxioms.spec': 'ad70cf8954a35ee7d48616421fe606b49281fbecf38593c9e6f63ec03ca8eb86',
-    'vendor/midnight/certora/specs/NetCredit.spec': '050b014c3d9968c020da6edc9a631e23537a2947ee7ca92bf9e87ac80db95376',
-    'vendor/midnight/certora/specs/NoDebtWithoutCollateral.spec': '2f2a2abfc934428c9c28dc10f849fcdeed6dbc1b91b9dfdf7a7184725766641c',
-    'vendor/midnight/certora/specs/NoDivisionByZero.spec': '7de87a329ef83eb8e9a2421d34e22ccd708f7b02f2370be4b3d851fe246c86b6',
-    'vendor/midnight/certora/specs/NoMultiplicationOverflow.spec': '4280c2eae90afcc65ec126c3d742134a212e1e1b45e0640374f17a0da3df75da',
-    'vendor/midnight/certora/specs/NotCreatedMarket.spec': '7a84cf6c7b31f049f734e90df63e639f8268f59f0f18c96c3e60262ff668f299',
+    'vendor/midnight/certora/specs/ExactMath.spec': '0efc73c631f89c5aafb44a62d6a73c6443f0f24b538026c88f56cff5c3d21bce',
+    'vendor/midnight/certora/specs/Healthiness.spec': 'c28569ef12cba887df1724e8bddf76549bd2b314f63e8cb9f41b56e645c23a9d',
+    'vendor/midnight/certora/specs/Liquidate.spec': '9d46e4c8bb2343d06029adf13ad533e1505b8eb6f6e8cc99534ade1bc4e2ee3a',
+    'vendor/midnight/certora/specs/LiquidationBoundedByLIF.spec': 'cd36b0ce6135cdc08c7f4d77fe8feab00757f27677c5639caf96fd7966fd0f16',
+    'vendor/midnight/certora/specs/LiquidationProfitability.spec': 'bb2c3d43441b754988f0b21fe969afafbc3dfd221d2a17ccf796bb42776bdd02',
+    'vendor/midnight/certora/specs/LossFactor.spec': 'f2c3b0904dfeaaf15fc4ec0357cc39d30c8198c3b84ffe4d9812ed6f75cac7cc',
+    'vendor/midnight/certora/specs/MarketNotReadBeforeCreated.spec': 'fc378a9132beedaa15c007a1d0453419a9d8d8e2867177a447f23068c0316d37',
+    'vendor/midnight/certora/specs/MaxRepaidHealthy.spec': 'f54f5b2a9f0daaeb73413fc08601bdee0cffc899638c36a50f96bf1f8544b4b3',
+    'vendor/midnight/certora/specs/Midnight.spec': '3dc98c6e7f424170fda86a0468ad487e9e942d0d3943ec4462bee13465916e4b',
+    'vendor/midnight/certora/specs/MulDiv.spec': '28fbcc50008f40d6274fcd2452a27f2b521ac33cacdcf9779b456671002e3440',
+    'vendor/midnight/certora/specs/MulDivAxioms.spec': 'fb72a24cd30ff2b7899a29412eb229981420447b533f39a1ca6d1923e217c5ec',
+    'vendor/midnight/certora/specs/NetCredit.spec': 'edf8b130f7b412fb22ca873f53f3750889a50e1c3bde18a216fd9ea91666ab66',
+    'vendor/midnight/certora/specs/NoDebtWithoutCollateral.spec': 'b060dcd2024e89948f4bbab67238fc09d786df59d588b04d7ca4fb7927c49789',
+    'vendor/midnight/certora/specs/NoDivisionByZero.spec': 'ac229ffa166baeaf0a5842c6c211ed27c1f09415de7788ca9099f16d00ae3ece',
+    'vendor/midnight/certora/specs/NoMultiplicationOverflow.spec': 'a2ec09e122587defebf6ed90a400fe5dec6b4ce312d7f93fa994d8704cf7bee1',
+    'vendor/midnight/certora/specs/NotCreatedMarket.spec': 'a609446a8403d6c8aefd7f1e842d3b71d6d9d82b55a6595d99af9c2dc97b79e8',
     'vendor/midnight/certora/specs/OfferTreeMembership.spec': '45c4a04844c154b2c6b4de11499b3d7e1e63641ea74f44f6397db3b251fb84bc',
-    'vendor/midnight/certora/specs/OfferTreeWellFormed.spec': 'f03d0d0a56032a864933ccdcd8298327a7579f3caf0542783f299d80ef5837c3',
-    'vendor/midnight/certora/specs/OnlyAuthorizedCanChange.spec': 'a7db52df967fea15a152cd4c13043686df30e9260008e0489fa887e37a91a14b',
-    'vendor/midnight/certora/specs/OnlyAuthorizedCanChangeUpdatedValues.spec': '91b71ed1855d7570b6320215287eb0c977551f9fe7ac3dc2c06850210e403be5',
-    'vendor/midnight/certora/specs/OnlyExplicitPayerCanLoseTokens.spec': '4501ede75164e7d53a53d71e58a67c446c63b9e16daf7e2f4ca920e6f397549f',
-    'vendor/midnight/certora/specs/PostDropRealizableBadDebt.spec': '4d81c99bde029a4aba48655796d81b52b87bbdc5ab20bab4013f12515efef035',
-    'vendor/midnight/certora/specs/PostMaturityDebt.spec': '57fa5d77e52b7b7b0811dedc45ab373c0d09120477aebf5600a4a11c42a32e87',
+    'vendor/midnight/certora/specs/OfferTreeWellFormed.spec': '7d580c5993e89cd50017104da89e69dd5d5464cdb2342c67d83e0e54f2957386',
+    'vendor/midnight/certora/specs/OnlyAuthorizedCanChange.spec': '3a614117047d2978a99f8ee49f81851fd60d0e2304d28e4e8d0b6a89ea1449d4',
+    'vendor/midnight/certora/specs/OnlyAuthorizedCanChangeUpdatedValues.spec': '47cb3c5ffa658970860da5e8d24ce73859ff73739578c6f59135ce0b41edc160',
+    'vendor/midnight/certora/specs/OnlyExplicitPayerCanLoseTokens.spec': '3ea4d33ceaae0eed014b1a8be18765e9751d045cad9c90e5e91b11d75026d5a4',
+    'vendor/midnight/certora/specs/PostDropRealizableBadDebt.spec': '9b4bf29b2559f5be83ad63856261666ada37c546c3c10c551a0eb09197e0313f',
+    'vendor/midnight/certora/specs/PostMaturityDebt.spec': '123e6c3f8f39e39089ead901328256188dd3380539226bb639631daa3475b896',
+    'vendor/midnight/certora/specs/PostMaturityWithdrawable.spec': 'e2651417f793aadada4f10b2cbcd58ea201a3970643b7f2f9f85b0bfddcf65c2',
     'vendor/midnight/certora/specs/PriceToTick.spec': '780605f3b3f50bd587a9d4e0f68b6822655b05fd98f595d67a52c7561565dbb1',
-    'vendor/midnight/certora/specs/Ratification.spec': '53335d861bbd965c9ec9f7087ae67a56b94c5cb68f123a84ff91cbbbb7bfac33',
-    'vendor/midnight/certora/specs/RealizableBadDebt.spec': 'b358fe4ccd7e3f203b4d8010dcce9a1168211f81d87d9e71bdf269de127962b0',
-    'vendor/midnight/certora/specs/RealizableBadDebtLiquidate.spec': '2014fa93bf9ac7ebd4ad299ab6e21ac166eb172f6fbbe771b71b55ec0845605e',
+    'vendor/midnight/certora/specs/Ratification.spec': 'f5e05b08f233999f5859939286d0b693c18f8a3b8e7ceeb4f9fa64c472cd3912',
+    'vendor/midnight/certora/specs/RealizableBadDebt.spec': '6022911f6b782c99c761e8bdfd28593d70bd339376eb9abc1ad6712447b15045',
+    'vendor/midnight/certora/specs/RealizableBadDebtLiquidate.spec': '639b3539d8b4e2ef10fe047ca5c87eb6dbfb2c53a90a6b3f308d80e8ce6f995f',
     'vendor/midnight/certora/specs/Reentrancy.spec': 'de55d47f1f1cf530e1687568f73a318c2a8c1c469a05f7f7f3d64a465210eb5c',
     'vendor/midnight/certora/specs/ReentrancyView.spec': '49d2ccd8893cd66c5141c9d25bde11bd9cf9abe0a55f78f63d87b6e4257d5594',
-    'vendor/midnight/certora/specs/Reverts.spec': '9e883d3e58cea4903d19aadb4f172fdf37f6ea1d36b25eac203dabc966b837c3',
-    'vendor/midnight/certora/specs/Role.spec': '2afdeb21181a7578765d7389d235ca003b10d6c09dade12356ec1c9e56c1626f',
-    'vendor/midnight/certora/specs/SettlementFeeBoundaries.spec': '5bd376b90a8db27f347194bdb1ec97219c9831e65dfa98cb2d7a151903f6aae4',
+    'vendor/midnight/certora/specs/Reverts.spec': '72e1fdddf477e1938b269b445635968f61d69e5e33cc93c884794fe48e4ab210',
+    'vendor/midnight/certora/specs/Role.spec': '8a45d0aadbc62044148e1ab82ae0977bde8118cab6afa3e99b6a6998463d477a',
+    'vendor/midnight/certora/specs/SettlementFeeBoundaries.spec': '2c085b2613285190b9fc748cf2bcdfa4b631a5ad5692e8982e7a659cca43d203',
     'vendor/midnight/certora/specs/SettlementFeeSpread.spec': '06b6da22400fdadd44db5daa5747dcc544ff9e8683059e5d793bb725bc38957b',
-    'vendor/midnight/certora/specs/Solvency.spec': '8c04e02fd716fb73694f76328b107b8840195974d980d24998072b589095dd84',
-    'vendor/midnight/certora/specs/SplitDoesNotPunishMakerOrFavorTaker.spec': 'cbeb8ce9c95b77bc4165b137a7a23204408f6c5fb309142ebdd75eec7869d95e',
-    'vendor/midnight/certora/specs/SplitPreservesAccounting.spec': '611b593fc76b9e4f8046f6d67e6738a64f0808ff9bf61db32c0ca57ca368f73a',
-    'vendor/midnight/certora/specs/SumOfCreditsAxiomatic.spec': '1800b552913e5818bc61c131268adafb6d689e1d5ee4e7ea249733e4ce178aa5',
-    'vendor/midnight/certora/specs/TakeAmountsLibInvertibility.spec': 'd9ed9b2279a1ebc4cdb8535741e5b4eb3e46e94e58e77ab52bb8efe9e1b60888',
-    'vendor/midnight/certora/specs/TickToPrice.spec': '62f1c9fa515d4a35270963c166660dbe961e44dddd8682891ca2f00fcca334d4',
+    'vendor/midnight/certora/specs/Solvency.spec': '13adbcb1f572b46aac1143a418e7ecf24ed08e4d9e4153a53fe5e2a90baafa0a',
+    'vendor/midnight/certora/specs/SplitDoesNotPunishMakerOrFavorTaker.spec': '6f45f12158940948134ded1f8f870c4392ff9f48dd5df5ffd55bc9e90c266642',
+    'vendor/midnight/certora/specs/SplitPreservesAccounting.spec': 'b4db419c36c2b9db15f1bd38a287c42018853dae9e06e471c202e4c7fb869f0d',
+    'vendor/midnight/certora/specs/SumOfCreditsAxiomatic.spec': 'f3f4c23786d6e126138efc3a5f1710d8e8798830d3f455dc89e6af6622ef61ac',
+    'vendor/midnight/certora/specs/TakeAmountsLibInvertibility.spec': '6852a80c732da8b49f70643380e34216b66cd9e1660b808cfd82f570586cac7e',
+    'vendor/midnight/certora/specs/TickToPrice.spec': '7b2c867cfad113255eb63d9f431f865c806a10b01c200e3a45e1de75f3d1e671',
     'vendor/midnight/certora/specs/TickToPriceIsMonotonic.spec': '44239d58d5a6f9258210f7b8cade704c8c12dc82b61aa65e50695e56d0336360',
-    'vendor/midnight/certora/specs/UpdateBeforeCredit.spec': '2c00268341ae201032b9fd93f7df94755ec56736f1e86ddb1b11d06338807067',
-    'vendor/midnight/certora/specs/UpdatePositionView.spec': 'e4fb47b718e7b41466ac989a6ad64782109fa37cb99ff0dc53a1e37dd38d2e54',
-    'vendor/midnight/certora/specs/WithdrawableMonotonicity.spec': '848f5714342ca1922a3e982504439c1b8319804a1656119eebd4f8a515a6289d',
+    'vendor/midnight/certora/specs/UpdateBeforeCredit.spec': '958a279033626ab9a465371beab1ba4dcefc5b0442a23c35925c7c8b06e8528c',
+    'vendor/midnight/certora/specs/UpdatePositionView.spec': '256e547180e158662e57a87feebbe6a8654bc76c4ad35cbe415bcd22f9d2efc4',
+    'vendor/midnight/certora/specs/WithdrawableMonotonicity.spec': '50a37fa5af78484ed0025f955414a2d8cec2606322c8144fb4990b1332d8413b',
     'vendor/midnight/foundry.lock': '80dd37d75a72e9452b67d0a4b8277ffd3453024f1e61a496902911b72d3188cf',
     'vendor/midnight/foundry.toml': '66bdda009efbb9a8ba7abf6864939275aaa5663adc48baf7c95208d6a109d520',
     'vendor/midnight/lib/forge-std/.gitattributes': 'd43e42793190ab90b245b9f5eed4d6c6913e8e71231aa703982c175834da5123',
@@ -386,7 +402,7 @@ EXPECTED = {
     'vendor/midnight/lib/morpho-blue/test/libraries/periphery/MorphoStorageLibTest.sol': 'bac7d05d41488336018a422356b77f6c66362a3bf51a46548cd8e638acb51980',
     'vendor/midnight/rocq/maxRepaidHealthy.v': '9ad6c7a78a7a4196f3bd0bf9d9802da250efc959e41924dec6c3894d8c25c173',
     'vendor/midnight/src/Midnight.sol': 'e49219b60645c887cc50cf23c752e10ec19e3816ddf0d40c82f60304b3c872c2',
-    'vendor/midnight/src/interfaces/ICallbacks.sol': 'db422d6e07cf550fab6ec846297206a2bbbe20a9b62fbbe3f541498fa0a856f1',
+    'vendor/midnight/src/interfaces/ICallbacks.sol': '3734dd449a8bfe4dc8ecbbb22d8eea1b478fdd721aa87b49dd834bcb9ccc28cb',
     'vendor/midnight/src/interfaces/IERC20.sol': '1148265722e00141244ee4223b36700c05a4daa2e48d434fe11a7285c2854989',
     'vendor/midnight/src/interfaces/IGate.sol': 'aaf05664dd0612b856eb13a1e85c682094a6ea8b21a873d03a33c8bae6b47c70',
     'vendor/midnight/src/interfaces/IMidnight.sol': 'b1a0cbcd9de9ce3781bd12cdd0a8665361f988fd23d0219217ff4e7981710475',
@@ -401,7 +417,7 @@ EXPECTED = {
     'vendor/midnight/src/periphery/README.md': 'fd01681c89d6d37279ddb13b5e70f4a716d5c297c9e1f2b8efa20435d0bd7afc',
     'vendor/midnight/src/periphery/blue-buy-callback/BlueBuyCallback.sol': 'e04bdaaa27774efc3aaf59cbcb566f3eedc5b87e90fd2d1e9ec414bb68871b02',
     'vendor/midnight/src/periphery/blue-buy-callback/BlueBuyCallbackFactory.sol': '23db922900db207987ce41f1cfadcba674684c764a94be6f11d28b27f6a47c54',
-    'vendor/midnight/src/periphery/blue-buy-callback/interfaces/IBlueBuyCallback.sol': '919142740376cc6d7da0229b23be31573159e38eda8e82eff036f3f33e64c3a9',
+    'vendor/midnight/src/periphery/blue-buy-callback/interfaces/IBlueBuyCallback.sol': '5b7cc41ae0590dd2e10a24df2a0220c8fa471aad23f080871e1bf7833316b012',
     'vendor/midnight/src/periphery/blue-buy-callback/interfaces/IBlueBuyCallbackFactory.sol': '658d0cdfe0bb6db9c6cbd545c673c10390677703dced261d9ff5c3ed3309dfb8',
     'vendor/midnight/src/periphery/blue-buy-callback/interfaces/IERC20Extended.sol': '6d29d3b6e8147500a1016d9a22f24a340d13c525d9d619b36ccd6fa57334d7e9',
     'vendor/midnight/src/periphery/blue-fallback-rolling/BlueFallbackRolling.sol': '87e239890d9646f74f3c8d5af3fb1b597c7a52886193f48de30388c7ccd4be47',
@@ -418,8 +434,8 @@ EXPECTED = {
     'vendor/midnight/src/periphery/whitelist-enter-gate/interfaces/IWhitelistEnterGate.sol': '6cbaf5302b2bd937359ea2ac4ebb79f78ff4f75c22a195d3e1dca312635f643c',
     'vendor/midnight/src/periphery/whitelist-enter-gate/interfaces/IWhitelistEnterGateFactory.sol': '10f69439e89d15754fa4d940e80565faaa501f254f74cec8e0eca864f23f65d5',
     'vendor/midnight/src/ratifiers/EcrecoverRatifier.sol': '56a2cc45b2eddf46eca5e30931c9891f14a85ae21798c5ea34b0f2c97c484a52',
-    'vendor/midnight/src/ratifiers/PriceRatifierV1.sol': '8220e144bc1d639870bcff85349ffd5716c40f886e4c7f731c443e9b725a9164',
-    'vendor/midnight/src/ratifiers/RateRatifierV1.sol': '9057220ee0b0c35b905e1bd22fc17347f0f076da498d832cdc6d3b69cc416524',
+    'vendor/midnight/src/ratifiers/PriceRatifierV1.sol': '6c25a9a6960b775adc27f7526d5205f367eae383694e86544adf2199c695638c',
+    'vendor/midnight/src/ratifiers/RateRatifierV1.sol': '3275f886ad8df8c7df077139732657fa503bdf6ed7414e9d6d6548f3c2e60dde',
     'vendor/midnight/src/ratifiers/SetterRatifier.sol': '70f9fb768a318c1355f27a3ac66ddb9b1eb965d7f3ca8664ad495b9b6239751b',
     'vendor/midnight/src/ratifiers/interfaces/IEcrecoverRatifier.sol': '88eba5ac9aa40c1b02afa36ac1695838c2e4887d881afdc8c067981f712a9b9a',
     'vendor/midnight/src/ratifiers/interfaces/IPriceRatifierV1.sol': 'cd36ac69ed129e552fb6846412e98f99b9ed1c2bfcd7398ffa6520d66d58c228',
@@ -432,7 +448,7 @@ EXPECTED = {
     'vendor/midnight/test/BlueBuyCallbackFactoryTest.sol': 'c09a46dbb84e01257ebd25814616a7bb1803199ddc0eca049f577142969be9ff',
     'vendor/midnight/test/BlueBuyCallbackIntegrationTest.sol': '0786d20bf3a29dd336d78b5396273d852e6dc5c0da46bdcf14d874210cdec0c1',
     'vendor/midnight/test/BlueBuyCallbackTest.sol': '39c43d5126749693567310f59b980c8af778611a820964ba89fd4b39436036d7',
-    'vendor/midnight/test/BlueFallbackRollingTest.sol': 'ee6b0f993e3b0ee1c5066e3273580a2d12c0da0e019556a4159bd136d21abec5',
+    'vendor/midnight/test/BlueFallbackRollingTest.sol': '2d3478d9cac68ad1b882ca68ed2352f59008d6ca5d8ea20c355bccb40e42bcdd',
     'vendor/midnight/test/ConsumableUnitsLibTest.sol': '6caaa352a5296a85927659ddcffa1ae66931ed73af50968ea9039e7825dfb7d9',
     'vendor/midnight/test/ContinuousFeeTest.sol': 'aa78f158a549e14405afd3b24b8a9e7b49a6c4bb4cb5a05b9caf4ba63ceca540',
     'vendor/midnight/test/ERC20LibTest.sol': 'b65dc01c8ea6aacb8c5832fedbcd6f22b44f1401519c5d118d1517caea8d41e3',
@@ -485,22 +501,35 @@ EXPECTED = {
     'vendor/midnight/test/ticks_exact_gen.py': 'cbd253d19f62fad9008b12a8863dc41a3c361f9ebf839217350ac5fbea2086c6',
 }
 
-def main() -> None:
-    failed = False
-    for rel, digest in EXPECTED.items():
+def check_digests(table, *, label):
+    ok = True
+    for rel, digest in table.items():
         path = ROOT / rel
         if not path.is_file():
-            print(f"missing frozen file: {rel}", file=sys.stderr)
-            failed = True
+            print(f"missing {label} file: {rel}", file=sys.stderr)
+            ok = False
             continue
         got = hashlib.sha256(path.read_bytes()).hexdigest()
         if got != digest:
-            print(f"frozen file changed: {rel}", file=sys.stderr)
+            print(f"{label} file changed: {rel}", file=sys.stderr)
+            ok = False
+    return ok
+
+def main() -> None:
+    start = "--start" in sys.argv[1:]
+    failed = not check_digests(EXPECTED, label="frozen")
+    if start:
+        failed = (not check_digests(INITIAL, label="initial")) or failed
+        lemmas = ROOT / "Midnight" / "Lemmas"
+        if lemmas.exists():
+            print("unexpected pre-agent path: Midnight/Lemmas", file=sys.stderr)
             failed = True
+    # Submodule gitdir pointers (files named `.git`) are local checkout paths;
+    # they are not part of the frozen tree.
     vendor = {
         p.relative_to(ROOT).as_posix()
         for p in (ROOT / "vendor").rglob("*")
-        if p.is_file()
+        if p.is_file() and p.name != ".git"
     }
     expected_vendor = {rel for rel in EXPECTED if rel.startswith("vendor/")}
     extra = sorted(vendor - expected_vendor)
@@ -511,7 +540,10 @@ def main() -> None:
         failed = True
     if failed:
         sys.exit(1)
-    print(f"frozen files unchanged ({len(EXPECTED)})")
+    if start:
+        print(f"template start state ok ({len(EXPECTED)} frozen, {len(INITIAL)} initial)")
+    else:
+        print(f"frozen files unchanged ({len(EXPECTED)})")
 
 if __name__ == "__main__":
     main()

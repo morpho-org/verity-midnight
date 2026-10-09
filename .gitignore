@@ -1,5 +1,7 @@
 experiment/.lake/
 experiment/out/
 runs/
+monitor-logs/
 results/
 cache/
+.env
