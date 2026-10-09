@@ -45,16 +45,25 @@ What the script does:
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `CURSOR_API_KEY` | (required) | Auth for the agent CLI |
-| `AGENT_MODEL` | `gpt-5.6-sol-high` | Cursor agent `--model` id (`agent --list-models`) |
-| `AGENT_TIMEOUT` | `1h` | Cap on the agent step only (`timeout(1)` inside the container) |
+| `AGENT_MODEL` | `gpt-5.6-sol-high` | Prover Cursor agent `--model` id (`agent --list-models`) |
+| `AGENT_TIMEOUT` | `1h` | Cap on the prover agent step only (`timeout(1)` inside the container) |
+| `MONITOR` | `1` | Set `0` to disable the sidecar progress agent |
+| `MONITOR_MODEL` | `$AGENT_MODEL` | Model for the read-only monitor agent |
+| `MONITOR_INTERVAL` | `2m` | How often the monitor agent reports (`30s` / `2m` / `1h`) |
 | `PLATFORM` | `linux/amd64` | Docker platform |
 | `IMAGE` | `midnight-agent` | Image name |
+
+While the prover runs, `[prover]` and `[monitor]` lines are streamed to the host
+stdout. The monitor only reads `/work` plus the prover’s Cursor transcripts; it
+must not edit the proof.
 
 Examples:
 
 ```sh
 AGENT_TIMEOUT=30m ./run-experiment.sh
 AGENT_MODEL=grok-4.7-high AGENT_TIMEOUT=90m ./run-experiment.sh
+MONITOR_MODEL=composer-2.5-fast MONITOR_INTERVAL=1m ./run-experiment.sh
+MONITOR=0 ./run-experiment.sh
 PLATFORM=linux/amd64 AGENT_TIMEOUT=2h ./run-experiment.sh
 ```
 

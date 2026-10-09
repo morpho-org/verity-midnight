@@ -9,11 +9,26 @@ PLATFORM="${PLATFORM:-linux/amd64}"
 IMAGE="${IMAGE:-midnight-agent}"
 AGENT_TIMEOUT="${AGENT_TIMEOUT:-1h}"
 AGENT_MODEL="${AGENT_MODEL:-gpt-5.6-sol-high}"
+# Second Cursor agent that prints read-only progress to the host stdout.
+MONITOR="${MONITOR:-1}"
+MONITOR_MODEL="${MONITOR_MODEL:-$AGENT_MODEL}"
+MONITOR_INTERVAL="${MONITOR_INTERVAL:-2m}"
 RUN_ID="$(date +%Y%m%d-%H%M%S)"
 TEMPLATE="$PWD/experiment"
 RUN_DIR="$PWD/runs/$RUN_ID"
 RESULT_DIR="$PWD/results/$RUN_ID"
 CACHE_DIR="$PWD/cache"
+ROOT="$PWD"
+
+parse_duration_secs() {
+  local d="$1"
+  case "$d" in
+    *s) echo "${d%s}" ;;
+    *m) echo $(( ${d%m} * 60 )) ;;
+    *h) echo $(( ${d%h} * 3600 )) ;;
+    *) echo "$d" ;;
+  esac
+}
 
 mkdir -p "$PWD/runs" "$PWD/results" "$CACHE_DIR"
 
@@ -86,21 +101,73 @@ if [[ "$MCP_STATUS" -ne 0 ]]; then
   exit 2
 fi
 
-echo "Starting agent on $RUN_DIR (model $AGENT_MODEL, timeout $AGENT_TIMEOUT)"
-set +e
-docker run --rm \
+PROVER_NAME="midnight-prover-$RUN_ID"
+MONITOR_NAME="midnight-monitor-$RUN_ID"
+PROVER_CURSOR="$RUN_DIR/.prover-cursor"
+mkdir -p "$PROVER_CURSOR" "$RUN_DIR/out"
+
+cleanup_agents() {
+  docker stop "$MONITOR_NAME" >/dev/null 2>&1 || true
+  docker rm -f "$MONITOR_NAME" >/dev/null 2>&1 || true
+  docker rm -f "$PROVER_NAME" >/dev/null 2>&1 || true
+  if [[ -n "${PROVER_LOGS_PID:-}" ]]; then kill "$PROVER_LOGS_PID" >/dev/null 2>&1 || true; fi
+  if [[ -n "${MONITOR_LOGS_PID:-}" ]]; then kill "$MONITOR_LOGS_PID" >/dev/null 2>&1 || true; fi
+}
+trap cleanup_agents EXIT
+
+echo "Starting prover agent on $RUN_DIR (model $AGENT_MODEL, timeout $AGENT_TIMEOUT)"
+docker run -d --name "$PROVER_NAME" \
   --platform "$PLATFORM" \
   -e CURSOR_API_KEY \
   -v "$RUN_DIR:/work" \
+  -v "$PROVER_CURSOR:/root/.cursor" \
   -w /work \
   "$IMAGE" \
   timeout --signal=TERM --kill-after=30s "$AGENT_TIMEOUT" \
   agent -p --force --trust --approve-mcps --sandbox disabled \
   --model "$AGENT_MODEL" \
   --workspace /work \
-  "Prove updatePositionViewProperties. Follow README.md and AGENTS.md. lean-lsp MCP is required — if it is unavailable, write out/mcp-unavailable with a reason and stop immediately (do not continue shell-only). Use lean_diagnostic_messages, lean_goal, lean_hover_info, lean_local_search. Stop when ./check/check_proof.sh exits 0."
-AGENT_STATUS=$?
+  "Prove updatePositionViewProperties. Follow README.md and AGENTS.md. lean-lsp MCP is required — if it is unavailable, write out/mcp-unavailable with a reason and stop immediately (do not continue shell-only). Use lean_diagnostic_messages, lean_goal, lean_hover_info, lean_local_search. Stop when ./check/check_proof.sh exits 0." \
+  >/dev/null
+
+docker logs -f "$PROVER_NAME" 2>&1 | while IFS= read -r line; do printf '[prover] %s\n' "$line"; done &
+PROVER_LOGS_PID=$!
+
+if [[ "$MONITOR" != "0" ]]; then
+  MONITOR_INTERVAL_SECS="$(parse_duration_secs "$MONITOR_INTERVAL")"
+  echo "Starting monitor agent (model $MONITOR_MODEL, every $MONITOR_INTERVAL → ${MONITOR_INTERVAL_SECS}s)"
+  docker run -d --name "$MONITOR_NAME" \
+    --platform "$PLATFORM" \
+    -e CURSOR_API_KEY \
+    -e MONITOR_MODEL="$MONITOR_MODEL" \
+    -e MONITOR_INTERVAL_SECS="$MONITOR_INTERVAL_SECS" \
+    -e PROVER_CURSOR_MOUNT=/prover-cursor \
+    -v "$RUN_DIR:/work" \
+    -v "$PROVER_CURSOR:/prover-cursor:ro" \
+    -v "$ROOT/scripts/monitor-prover-loop.sh:/monitor-prover-loop.sh:ro" \
+    -w /work \
+    "$IMAGE" \
+    bash /monitor-prover-loop.sh \
+    >/dev/null
+
+  docker logs -f "$MONITOR_NAME" 2>&1 | while IFS= read -r line; do printf '[monitor] %s\n' "$line"; done &
+  MONITOR_LOGS_PID=$!
+fi
+
+set +e
+AGENT_STATUS="$(docker wait "$PROVER_NAME")"
 set -e
+
+# Drain a moment of log follow, then tear down monitor / log pumps.
+sleep 1
+if [[ -n "${MONITOR_LOGS_PID:-}" ]]; then kill "$MONITOR_LOGS_PID" >/dev/null 2>&1 || true; fi
+if [[ -n "${PROVER_LOGS_PID:-}" ]]; then kill "$PROVER_LOGS_PID" >/dev/null 2>&1 || true; fi
+docker stop "$MONITOR_NAME" >/dev/null 2>&1 || true
+docker rm -f "$MONITOR_NAME" >/dev/null 2>&1 || true
+# Keep prover container until we read exit details; remove in trap/cleanup.
+docker rm -f "$PROVER_NAME" >/dev/null 2>&1 || true
+trap - EXIT
+
 if [[ -f "$RUN_DIR/out/mcp-unavailable" ]]; then
   echo "Agent reported lean-lsp MCP unavailable — run kept at $RUN_DIR"
   cat "$RUN_DIR/out/mcp-unavailable" >&2 || true
