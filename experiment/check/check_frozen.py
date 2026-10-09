@@ -1,11 +1,23 @@
 #!/usr/bin/env python3
-"""Fail if a frozen task file was edited or a vendor file was added or removed."""
+"""Fail if a frozen task file was edited or a vendor file was added or removed.
+
+By default (used by check_proof.sh after the agent runs), only EXPECTED is
+checked — Midnight/Proof.lean and new files under Midnight/ may change.
+
+With --start (used by run-experiment.sh before the agent), also check INITIAL
+so each trial begins from the known stub Proof.lean.
+"""
 
 import hashlib
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+# Editable by the agent; verified only with --start.
+INITIAL = {
+    'Midnight/Proof.lean': '1a5f992b1c5314b007c40854f199347a93a5045c091f88225f431bbd5d4bca7b',
+}
 
 EXPECTED = {
     'Midnight.lean': 'b6b1dce82ab672ceea9235dbe00d25d8a7952b2d677af13dc96cb1a57f97075a',
@@ -17,7 +29,7 @@ EXPECTED = {
     'check/Goal.lean': 'fc36b125b4acb6ff3462efdefc745289609e7a50e6db644c4931f79c940383cc',
     'check/check_axioms.py': 'dc115caa2fea9e22d681e2943d4a4fa111d35753cc5863182e8ee92e2a5ac595',
     'check/check_proof.sh': 'ee10d3c4985b4f5b2bd5c626ce347efe8ad948347ce1a82a6a81b77944cc5fd0',
-    'README.md': 'c5e831478147ab2ab42a8e4f047de99769913053b2d338dfe54c21cde145d72a',
+    'README.md': '546a9d0eaf2afed748b4890c1757712791df6f9aed6b7dbd8cb0d9215f6874cc',
     'vendor/midnight/.gitattributes': '8faa5cd20a6f243e56a1426736cae6f4fcc05ce0c3f95fa16b5bbb0f06d16182',
     'vendor/midnight/.github/workflows/certora.yml': 'a74ffb8fa0869b0929e9ebd62b4436de119a1e26564ea4d545037c18458209f8',
     'vendor/midnight/.github/workflows/forge-old.yml': '24dba7a0521f557e067b922580d05e6ec89d559aba5a14afa095e3fb851d5394',
@@ -489,17 +501,28 @@ EXPECTED = {
     'vendor/midnight/test/ticks_exact_gen.py': 'cbd253d19f62fad9008b12a8863dc41a3c361f9ebf839217350ac5fbea2086c6',
 }
 
-def main() -> None:
-    failed = False
-    for rel, digest in EXPECTED.items():
+def check_digests(table, *, label):
+    ok = True
+    for rel, digest in table.items():
         path = ROOT / rel
         if not path.is_file():
-            print(f"missing frozen file: {rel}", file=sys.stderr)
-            failed = True
+            print(f"missing {label} file: {rel}", file=sys.stderr)
+            ok = False
             continue
         got = hashlib.sha256(path.read_bytes()).hexdigest()
         if got != digest:
-            print(f"frozen file changed: {rel}", file=sys.stderr)
+            print(f"{label} file changed: {rel}", file=sys.stderr)
+            ok = False
+    return ok
+
+def main() -> None:
+    start = "--start" in sys.argv[1:]
+    failed = not check_digests(EXPECTED, label="frozen")
+    if start:
+        failed = (not check_digests(INITIAL, label="initial")) or failed
+        lemmas = ROOT / "Midnight" / "Lemmas"
+        if lemmas.exists():
+            print("unexpected pre-agent path: Midnight/Lemmas", file=sys.stderr)
             failed = True
     # Submodule gitdir pointers (files named `.git`) are local checkout paths;
     # they are not part of the frozen tree.
@@ -517,7 +540,10 @@ def main() -> None:
         failed = True
     if failed:
         sys.exit(1)
-    print(f"frozen files unchanged ({len(EXPECTED)})")
+    if start:
+        print(f"template start state ok ({len(EXPECTED)} frozen, {len(INITIAL)} initial)")
+    else:
+        print(f"frozen files unchanged ({len(EXPECTED)})")
 
 if __name__ == "__main__":
     main()

@@ -75,7 +75,7 @@ under `results/` when the checker passes.
 
 | Path | Role |
 |------|------|
-| `experiment/` | Immutable task template (stub `Proof.lean`, frozen Import/Spec/check/vendor) |
+| `experiment/` | Immutable task template (stub `Proof.lean`, frozen Import/Spec/check/vendor); `check_frozen.py --start` pins the stub before each trial |
 | `runs/<id>/` | One trial’s workspace (gitignored) |
 | `results/<id>/` | Extracted proof after a passing check (gitignored) |
 | `cache/` | Warm Lake packages + linux `solc` between runs (gitignored) |

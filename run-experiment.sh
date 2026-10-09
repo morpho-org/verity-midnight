@@ -28,6 +28,9 @@ if [[ -d "$TEMPLATE/.lake" ]]; then
 fi
 rm -rf "$TEMPLATE/out"
 
+echo "Checking experiment/ start state (frozen + stub Proof.lean)"
+python3 "$TEMPLATE/check/check_frozen.py" --start
+
 echo "Preparing run $RUN_ID"
 mkdir -p "$RUN_DIR"
 # No .lake / out from the template — each trial starts from the stub proof only.

@@ -17,6 +17,8 @@ Produce a proof that `./check/check_proof.sh` accepts.
 - `check/`
 
 The checker hashes those files and rejects the run if they change.
+`Midnight/Proof.lean` is hashed only at trial start (`check_frozen.py --start`)
+so each agent begins from the known stub; the post-proof check allows it to change.
 
 ## What counts as done
 
