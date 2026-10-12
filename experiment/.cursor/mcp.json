@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "lean-lsp": {
+      "command": "sh",
+      "args": [
+        "/work/scripts/lean-mcp.sh"
+      ]
+    }
+  }
+}

@@ -17,6 +17,8 @@ Produce a proof that `./check/check_proof.sh` accepts.
 - `check/`
 
 The checker hashes those files and rejects the run if they change.
+`Midnight/Proof.lean` is hashed only at trial start (`check_frozen.py --start`)
+so each agent begins from the known stub; the post-proof check allows it to change.
 
 ## What counts as done
 
@@ -30,7 +32,16 @@ The checker hashes those files and rejects the run if they change.
 
 ## Hint
 
-A successful call does not underflow the final checked subtractions, so `newCredit + fee` is the post-slash credit and `newPendingFee + fee` is at most the old pending fee. `lastLossFactor ≤ lossFactor` means slashing multiplies credit by at most one. The exact formula for `fee` is not needed.
+A successful call does not underflow the final checked subtractions, so `newCredit + fee` is the post-slash credit and `newPendingFee + fee` is at most the old pending fee. `lastLossFactor ≤ lossFactor` means slashing multiplies credit by at most one.
+
+Import `Compiler.SolidityImport.Proofs` (and `Compiler.SolidityImport.Access`):
+  - functionBody <model>.model "<function>" gets the list of statements in the <function>
+  - `splitAfter "<localVar>"` slices the body by Solidity local variable names
+  - In case the concrete value of some heavy computation `c` is not needed for the property, `split_prefix`, `split_prefix_continue`, `ends_return`, and `list_frame` (dischargeable `by decide`) step across those slices and frame unmodified bindings accross `c` without executing `c`.
+  - `evalExpr_structMember2_param`, `evalExpr_structMember_param`, `sub_word`, `mul_word128`, `div_word`, `mask_eq`, and `word_of_small` discharge the storage reads and 256-bit word arithmetic.
+
+lean-lsp MCP (`scripts/lean-mcp.sh`) is required. If it is unavailable, write
+`out/mcp-unavailable` and stop (see `AGENTS.md`); do not continue shell-only.
 
 ## Loop
 
@@ -39,4 +50,4 @@ lake build Midnight.Proof
 ./check/check_proof.sh
 ```
 
-Work only in this directory. Do not read parent directories or other checkouts.  Do not check the correct answer from github.
+Work only in this directory. Do not read parent directories or other checkouts.  Do not check the correct answer from github or git history.
