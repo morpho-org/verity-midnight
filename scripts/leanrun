@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""Run a Lean command and report its exit status, peak memory and wall time.
+
+  leanrun Midnight/Lemmas/Foo.lean      # lake env lean Midnight/Lemmas/Foo.lean
+  leanrun lake build Midnight.Proof     # any other command
+
+Output streams through unchanged; the summary goes to stderr, so it survives
+`| head` and `| tail`. Exit status 137 (SIGKILL) almost always means the
+kernel's OOM killer stopped Lean; "excessive memory consumption" means Lean
+hit its own cap, LEAN_MEMORY_MB (see SOLIDITY_IMPORT.md).
+"""
+
+import os
+import resource
+import signal
+import subprocess
+import sys
+import time
+
+CAP_MESSAGE = b"excessive memory consumption"
+
+
+def main() -> int:
+    args = sys.argv[1:]
+    if not args or args[0] in ("-h", "--help"):
+        print(__doc__.strip(), file=sys.stderr)
+        return 2
+    if len(args) == 1 and args[0].endswith(".lean"):
+        args = ["lake", "env", "lean", args[0]]
+
+    start = time.monotonic()
+    capped = False
+    proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    try:
+        for line in proc.stdout:
+            capped = capped or CAP_MESSAGE in line
+            try:
+                sys.stdout.buffer.write(line)
+                sys.stdout.buffer.flush()
+            except BrokenPipeError:
+                # The reader (e.g. `head`) went away; keep draining so the
+                # command finishes and the summary is still reported.
+                devnull = os.open(os.devnull, os.O_WRONLY)
+                os.dup2(devnull, sys.stdout.fileno())
+        status = proc.wait()
+    except KeyboardInterrupt:
+        proc.send_signal(signal.SIGINT)
+        status = proc.wait()
+    elapsed = time.monotonic() - start
+    # Linux reports ru_maxrss in KiB: the largest resident set of any
+    # descendant process that has been waited for (lake waits for lean).
+    peak_mb = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss // 1024
+
+    code = 128 - status if status < 0 else status
+    if status == -signal.SIGKILL or status == 137:
+        verdict = "KILLED (SIGKILL): out of memory, not a Lean error"
+    elif capped:
+        verdict = f"FAILED: Lean hit its memory cap (LEAN_MEMORY_MB={os.environ.get('LEAN_MEMORY_MB', 'default')})"
+    elif code == 0:
+        verdict = "ok"
+    else:
+        verdict = "FAILED"
+    print(f"leanrun: exit={code} peak_rss={peak_mb}MB wall={elapsed:.1f}s {verdict}",
+          file=sys.stderr)
+    return code
+
+
+if __name__ == "__main__":
+    sys.exit(main())

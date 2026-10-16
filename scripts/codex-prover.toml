@@ -1,0 +1,11 @@
+# The hosted web search tool runs on OpenAI's side, so the egress proxy cannot
+# block it. Turn it off so the prover cannot look up published proofs.
+web_search = "disabled"
+
+[mcp_servers.lean-lsp]
+command = "sh"
+args = ["/work/scripts/lean-mcp.sh"]
+required = true
+default_tools_approval_mode = "auto"
+startup_timeout_sec = 60
+tool_timeout_sec = 300

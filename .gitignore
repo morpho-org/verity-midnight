@@ -1,5 +1,10 @@
 experiment/.lake/
 experiment/out/
 runs/
+monitor-logs/
+audit-logs/
 results/
 cache/
+.env
+.auth/
+__pycache__/
