@@ -41,7 +41,7 @@ RUN curl -fsSL https://claude.ai/install.sh -o /tmp/install-claude.sh \
     && rm /tmp/install-claude.sh \
     && claude --version
 
-COPY scripts/run-prover.sh scripts/monitor-prover-loop.sh scripts/claude-common.sh scripts/claude-prover.json scripts/egress/tinyproxy.conf scripts/install-solc.py /opt/midnight/
+COPY scripts/run-prover.sh scripts/monitor-prover-loop.sh scripts/claude-common.sh scripts/claude-prover.json scripts/turbo-force-hook.py scripts/egress/tinyproxy.conf scripts/install-solc.py /opt/midnight/
 
 # Cap each Lean process's memory (LEAN_MEMORY_MB, default 6144) so runaway
 # proofs fail with a Lean error instead of an OOM kill; `leanrun` reports
@@ -56,3 +56,24 @@ RUN set -eux; \
     lean --version
 
 WORKDIR /work
+
+ARG TURBO_LEAN_REF=8a865294a320e55cb734606430949ced9e0d66fa
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends build-essential; \
+    mkdir -p /opt/turbo-lean/src /opt/turbo-lean/bin; \
+    curl -fsSL https://sh.rustup.rs -o /tmp/rustup-init.sh; \
+    sh /tmp/rustup-init.sh -y --profile minimal --default-toolchain stable; \
+    rm /tmp/rustup-init.sh; \
+    export PATH="/root/.cargo/bin:$PATH"; \
+    git clone https://github.com/Th0rgal/turbo-lean.git /opt/turbo-lean/src; \
+    git -C /opt/turbo-lean/src checkout --detach "$TURBO_LEAN_REF"; \
+    cd /opt/turbo-lean/src/lean; \
+    lake build TurboLean; \
+    cargo build --release --locked --manifest-path /opt/turbo-lean/src/Cargo.toml; \
+    install -D -m 755 /opt/turbo-lean/src/target/release/turbo-lean /opt/turbo-lean/bin/turbo-lean; \
+    rm -rf /root/.cargo /root/.rustup /opt/turbo-lean/src/.git /opt/turbo-lean/src/target \
+      /opt/turbo-lean/src/crates /opt/turbo-lean/src/Cargo.toml /opt/turbo-lean/src/Cargo.lock; \
+    sed -i '/\.cargo\/env/d' /root/.profile; \
+    apt-get purge -y --auto-remove build-essential; \
+    rm -rf /var/lib/apt/lists/*

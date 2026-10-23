@@ -26,7 +26,10 @@ def main() -> int:
         print(__doc__.strip(), file=sys.stderr)
         return 2
     if len(args) == 1 and args[0].endswith(".lean"):
-        args = ["lake", "env", "lean", args[0]]
+        if os.environ.get("TURBO_LEAN") in ("1", "force"):
+            args = ["turbo-lean", "check", args[0], "--project-dir", "."]
+        else:
+            args = ["lake", "env", "lean", args[0]]
 
     start = time.monotonic()
     capped = False

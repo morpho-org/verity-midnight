@@ -174,6 +174,9 @@ Agents get help with the memory-heavy parts of reasoning about
 These files are frozen like the task files. Runs before they were added had
 none of them, so compare results across that change with care.
 
+`TURBO_LEAN=1` changes the checker used during a trial, so compare those results
+separately from runs where `TURBO_LEAN` is unset or `0`.
+
 ## Verity version
 
 The template pins Verity `10f697bb` (2026-10-12), the version that also imports
@@ -213,6 +216,7 @@ compare them with care.
 | `MONITOR_REASONING_EFFORT` | `$AGENT_REASONING_EFFORT` | Codex or Claude monitor reasoning effort |
 | `AGENT_TIMEOUT` | `120m` | Cap on the prover agent step only (`timeout(1)` inside the container) |
 | `LEAN_MEMORY_MB` | `6144` | Per-process Lean memory cap (`lean -M`) in the prover container; `0` disables it. Warm-up and the final checker run uncapped |
+| `TURBO_LEAN` | `0` | `1` offers `turbo-lean check <File.lean> --decl <name> --project-dir .`; `force` (Claude-only) blocks `lake build`/`lake env lean`/`leanrun <File.lean>` via hook but keeps lean-lsp MCP and `check_proof.sh`; `hard` (Claude-only) removes MCP entirely and blocks all shell Lean (`lake`, `lean`, `leanrun`, `elan`) and the check scripts — turbo-lean is the only compiler feedback. Compare the arms separately |
 | `MONITOR` | `1` | Set `0` to disable the sidecar progress agent |
 | `MONITOR_MODEL` | `$AGENT_MODEL` | Model for the monitor / retrospective agent |
 | `MONITOR_INTERVAL` | `2m` | How often the monitor journals (`30s` / `2m` / `1h`) |

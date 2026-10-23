@@ -5,6 +5,15 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 source scripts/agent-backend.sh
+TURBO_LEAN="${TURBO_LEAN:-0}"
+case "$TURBO_LEAN" in
+  0|1|force|hard) ;;
+  *) echo "Invalid TURBO_LEAN: $TURBO_LEAN (expected 0, 1, force or hard)" >&2; exit 2 ;;
+esac
+if [[ "$TURBO_LEAN" =~ ^(force|hard)$ && "$AGENT_BACKEND" != "claude" ]]; then
+  printf '%s\n' "TURBO_LEAN=$TURBO_LEAN requires AGENT_BACKEND=claude" >&2
+  exit 2
+fi
 if [[ "$AGENT_BACKEND" == codex && "$CODEX_AUTH" == chatgpt ]]; then
   python3 scripts/codex-auth.py "$CODEX_AUTH_FILE"
 elif [[ "$AGENT_BACKEND" == claude && "$CLAUDE_AUTH" == login ]]; then
@@ -17,6 +26,12 @@ fi
 source scripts/platform.sh
 IMAGE="${IMAGE:-midnight-agent}"
 AGENT_TIMEOUT="${AGENT_TIMEOUT:-120m}"
+# Optional Docker memory cap for the prover container (e.g. 10g); empty uses host default.
+PROVER_MEMORY_LIMIT="${PROVER_MEMORY_LIMIT:-}"
+PROVER_MEM_ARGS=""
+if [[ -n "$PROVER_MEMORY_LIMIT" ]]; then
+  PROVER_MEM_ARGS="--memory=$PROVER_MEMORY_LIMIT --memory-swap=$PROVER_MEMORY_LIMIT"
+fi
 # Per-process memory cap (MB) for Lean in the prover container; 0 disables it.
 # Warm-up and the final checker run without the cap.
 LEAN_MEMORY_MB="${LEAN_MEMORY_MB:-6144}"
@@ -38,6 +53,11 @@ RUN_ID="$(date +%Y%m%d-%H%M%S)-$AGENT_BACKEND"
 if [[ "$EXPERIMENT_TASK" != update-position-view ]]; then
   RUN_ID="$RUN_ID-$EXPERIMENT_TASK"
 fi
+case "$TURBO_LEAN" in
+  1) RUN_ID="$RUN_ID-turbo" ;;
+  force) RUN_ID="$RUN_ID-turbo-force" ;;
+  hard) RUN_ID="$RUN_ID-turbo-hard" ;;
+esac
 TEMPLATE="$PWD/experiment"
 RUN_DIR="$PWD/runs/$RUN_ID"
 # Monitor state is outside the prover workspace so the prover cannot see or
@@ -93,7 +113,6 @@ elif [[ "$EXPERIMENT_TASK" == ticklib ]]; then
   python3 scripts/prepare-ticklib-task.py "$RUN_DIR"
   python3 "$RUN_DIR/check/check_frozen.py" --start
 fi
-
 docker build --platform "$PLATFORM" -t "$IMAGE" .
 
 echo "Warming Lean deps + solc in $RUN_DIR"
@@ -102,6 +121,8 @@ docker run --rm \
   -v "$RUN_DIR:/work" \
   -v "$CACHE_DIR:/cache" \
   -e EXPERIMENT_TASK="$EXPERIMENT_TASK" \
+  -e TURBO_LEAN="$TURBO_LEAN" \
+  -e TURBO_LEAN_HOME=/work/.lake/turbo-lean \
   -e LEAN_MEMORY_MB=0 \
   -w /work \
   "$IMAGE" \
@@ -128,18 +149,34 @@ docker run --rm \
     cp -a .lake/solidity-import/solc-0.8.34 /cache/solidity-import/solc-0.8.34
     if [[ "$EXPERIMENT_TASK" == wexp ]]; then
       lake build Midnight.TickLibSpec
+      WARM_SMOKE=""
     elif [[ "$EXPERIMENT_TASK" == wexp-positive ]]; then
       lake build Midnight.TickLibPositiveSpec Compiler.SolidityImport.Proofs ProofKit
       lake env lean check/TickLibPositiveSmoke.lean
+      WARM_SMOKE="check/TickLibPositiveSmoke.lean"
     elif [[ "$EXPERIMENT_TASK" == wexp-original ]]; then
       lake build Midnight.TickLibImportSpec ProofKit
       lake env lean check/TickLibImportSmoke.lean
+      WARM_SMOKE="check/TickLibImportSmoke.lean"
     elif [[ "$EXPERIMENT_TASK" == ticklib ]]; then
       lake build Midnight.TickLibFullSpec ProofKit
       lake env lean check/TickLibFullSmoke.lean
+      WARM_SMOKE="check/TickLibFullSmoke.lean"
     else
       lake build Midnight.Import Midnight.Spec Compiler.SolidityImport.Proofs ProofKit
       lake env lean check/UpdatePositionViewSmoke.lean
+      WARM_SMOKE="check/UpdatePositionViewSmoke.lean"
+    fi
+    if [[ "${TURBO_LEAN:-0}" =~ ^(1|force|hard)$ ]]; then
+      export PATH="/opt/turbo-lean/bin:$PATH"
+      turbo-lean seed-shards --project-dir . --require-olean
+      if [[ -n "$WARM_SMOKE" ]]; then
+        turbo-lean check "$WARM_SMOKE" --project-dir .
+      fi
+      if [[ -f Midnight/Proof.lean ]]; then
+        turbo-lean check Midnight/Proof.lean --project-dir . || true
+      fi
+      turbo-lean gc --project-dir . >/dev/null 2>&1 || true
     fi
   '
 
@@ -162,6 +199,10 @@ PROVER_NAME="midnight-prover-$RUN_ID"
 MONITOR_NAME="midnight-monitor-$RUN_ID"
 PROXY_NAME="midnight-egress-$RUN_ID"
 EGRESS_NET="midnight-egress-$RUN_ID"
+TURBO_LEAN_DOCKER_ARGS=""
+case "$TURBO_LEAN" in
+  1|force|hard) TURBO_LEAN_DOCKER_ARGS="-e TURBO_LEAN=$TURBO_LEAN -e TURBO_LEAN_HOME=/work/.lake/turbo-lean" ;;
+esac
 mkdir -p "$AUDIT_DIR"
 
 cleanup_egress() {
@@ -260,11 +301,15 @@ echo "Starting $AGENT_BACKEND prover on $RUN_DIR (model $AGENT_MODEL, timeout $A
 # shellcheck disable=SC2086
 docker run -d --name "$PROVER_NAME" \
   --platform "$PLATFORM" \
+  --tmpfs /dev/shm:rw,exec,nosuid,size=2g \
+  $PROVER_MEM_ARGS \
   $AGENT_NET_ARGS \
+  $TURBO_LEAN_DOCKER_ARGS \
   $AGENT_AUTH_ARGS \
   -e AGENT_BACKEND="$AGENT_BACKEND" \
   -e AGENT_MODEL="$AGENT_MODEL" \
   -e AGENT_REASONING_EFFORT="$AGENT_REASONING_EFFORT" \
+  -e EXPERIMENT_TASK="$EXPERIMENT_TASK" \
   -e LEAN_MEMORY_MB="$LEAN_MEMORY_MB" \
   -v "$RUN_DIR:/work" \
   -v "$PROVER_HOME:$AGENT_HOME_MOUNT" \
@@ -346,6 +391,10 @@ comm -13 "$AUDIT_DIR/files-before.txt" "$AUDIT_DIR/files-after.txt" >"$AUDIT_DIR
 if [[ -s "$AUDIT_DIR/stray-files.txt" ]]; then
   echo "WARNING: the prover left files outside Midnight/ (see $AUDIT_DIR/stray-files.txt):"
   sed 's/^/  /' "$AUDIT_DIR/stray-files.txt"
+fi
+
+if [[ "$EGRESS" != "0" ]]; then
+  docker run --rm --platform "$PLATFORM" --network none -v "$AUDIT_DIR:/egress" "$IMAGE" chmod a+r /egress/tinyproxy.log || true
 fi
 
 echo "Auditing prover transcripts"
